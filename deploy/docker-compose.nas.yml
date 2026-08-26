@@ -1,0 +1,12 @@
+services:
+  web-habit-tracker:
+    image: ghcr.io/mktahmasbi99/web-habit-tracker:latest
+    container_name: web-habit-tracker
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Warsaw}
+    volumes:
+      - ./data:/data
+    ports:
+      - 8000:8000
+
