@@ -8,6 +8,8 @@ All notable changes to this project are documented here.
 - Add validated server-side and uploaded backup restore, pre-restore safety snapshots, explicit web-backup markers, and confirmed backup deletion.
 - Consolidate restore actions into the server backup list and place scheduling plus the legacy importer under Advanced.
 - Remove visible navigation captions while retaining accessible names for the icon buttons, and use a circled check for the primary habit view.
+- Group the collapsed Backup and restore and Advanced disclosures under a concise Data heading.
+- Rename Application to Server time and explain that its timezone and date values are read-only server settings.
 
 ## 1.0.0 - 2026-08-26
 

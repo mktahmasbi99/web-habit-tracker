@@ -44,7 +44,12 @@ describe("Habit Tracker", () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
     await user.click(screen.getByRole("button", { name: "More" }));
-    expect(await screen.findByRole("heading", { name: "Backup and restore" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Data" })).toBeInTheDocument();
+    const backup = screen.getByRole("button", { name: "Backup and restore" });
+    expect(backup).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Create backup" })).not.toBeInTheDocument();
+    await user.click(backup);
+    expect(backup).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "Create backup" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Server backups" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Restore from backup" })).not.toBeInTheDocument();
@@ -58,6 +63,8 @@ describe("Habit Tracker", () => {
     await user.click(legacy);
     expect(screen.getByRole("heading", { name: "Import legacy database" })).toBeInTheDocument();
     expect(screen.queryByText("Backup and restore", { selector: ".roadmap-row" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Server time" })).toBeInTheDocument();
+    expect(screen.getByText(/timezone comes from the server/)).toBeInTheDocument();
     expect(screen.getByText("Europe/Warsaw")).toBeInTheDocument();
   });
 });
