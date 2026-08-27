@@ -27,9 +27,21 @@ describe("Habit Tracker", () => {
   it("shows the server-owned day and habit actions", async () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(screen.getByText("2026-08-26")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Read" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
+  });
+
+  it("only shows the date subtitle for today, yesterday, and tomorrow", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Yesterday" })).toBeInTheDocument());
+    expect(screen.getByText("2026-08-25")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: "24 Aug 2026" })).toBeInTheDocument());
+    expect(screen.queryByText("2026-08-24")).not.toBeInTheDocument();
   });
 
   it("navigates to an unresolved date", async () => {

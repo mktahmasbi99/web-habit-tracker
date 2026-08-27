@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Show the ISO date subtitle only beneath Today, Yesterday, and Tomorrow, avoiding redundant dates beneath ordinary day headings.
 - Add downloadable on-demand backups, GUI-configured daily and weekly schedules, retention controls, tagged backup browsing, and failure notifications.
 - Add validated server-side and uploaded backup restore, pre-restore safety snapshots, explicit web-backup markers, and confirmed backup deletion.
 - Consolidate restore actions into the server backup list and place scheduling plus the legacy importer under Advanced.

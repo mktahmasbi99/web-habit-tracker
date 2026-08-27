@@ -36,6 +36,7 @@ function TodayPage({ config, selectedDate, onDate, onDataChange, reportError }: 
     finally { setLoading(false); }
   }, [selectedDate, reportError]);
   useEffect(() => { void load(); }, [load]);
+  const isRelativeDay = selectedDate === config.today || selectedDate === shiftDay(config.today, -1) || selectedDate === shiftDay(config.today, 1);
   const title = selectedDate === config.today ? "Today" : selectedDate === shiftDay(config.today, -1) ? "Yesterday" : selectedDate === shiftDay(config.today, 1) ? "Tomorrow" : prettyDate(selectedDate);
   const setStatus = async (habit: HabitDay, status: Status) => {
     try { await api.setStatus(habit.id, selectedDate, status); await load(); onDataChange(); }
@@ -44,7 +45,7 @@ function TodayPage({ config, selectedDate, onDate, onDataChange, reportError }: 
   return <section className="page today-page">
     <header className="day-header">
       <button className="icon-button accent" onClick={() => onDate(shiftDay(selectedDate, -1))} aria-label="Previous day"><ChevronLeft /></button>
-      <button className="day-title" onClick={() => setCalendar(true)}><h1>{title}</h1><small>{selectedDate}</small></button>
+      <button className="day-title" onClick={() => setCalendar(true)}><h1>{title}</h1>{isRelativeDay && <small>{selectedDate}</small>}</button>
       <button className="icon-button accent" onClick={() => onDate(shiftDay(selectedDate, 1))} aria-label="Next day"><ChevronRight /></button>
     </header>
     <div className="primary-action"><button className="add-button" onClick={() => setAdding(true)} aria-label="Add habit"><Plus /></button></div>
