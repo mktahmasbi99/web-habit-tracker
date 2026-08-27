@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -125,3 +125,57 @@ def test_invalid_import_does_not_replace_live_data(store):
         store.import_database(b"not sqlite", "IMPORT")
     assert store.note_summaries()[0]["name"] == "Keep"
 
+
+def test_backup_defaults_and_on_demand_marker(store):
+    assert store.backup_settings() == {
+        "dailyEnabled": True, "dailyTime": "01:00", "dailyRetention": 7,
+        "weeklyEnabled": True, "weeklyDay": 6, "weeklyTime": "01:00",
+        "weeklyRetention": 8, "safetyRetention": 8,
+    }
+    store.create_habit("Read", store.today().isoformat())
+    backup = store.create_backup()
+    assert backup.exists()
+    assert store.list_backups()[0]["category"] == "on-demand"
+    with sqlite3.connect(backup) as connection:
+        assert connection.execute(
+            "SELECT app_id, format_version, category FROM web_backup_metadata"
+        ).fetchone() == ("web-habit-tracker", 1, "on-demand")
+
+
+def test_restore_validates_backup_and_preserves_schedule(store):
+    today = store.today().isoformat()
+    store.create_habit("Before", today)
+    backup = store.create_backup()
+    settings = store.backup_settings()
+    settings.update({"dailyTime": "02:30", "dailyRetention": 3})
+    store.update_backup_settings(settings)
+    store.create_habit("After", today)
+
+    safety = store.restore_server_backup(backup.name, "RESTORE")
+
+    assert safety.startswith("pre-restore-")
+    assert [item["name"] for item in store.note_summaries()] == ["Before"]
+    assert store.backup_settings()["dailyTime"] == "02:30"
+    assert store.backup_settings()["dailyRetention"] == 3
+
+
+def test_scheduled_backup_catches_up_once(store):
+    settings = store.backup_settings()
+    settings["weeklyEnabled"] = False
+    store.update_backup_settings(settings)
+    first = datetime(2026, 8, 27, 2, 0, tzinfo=store.settings.timezone)
+    store.run_scheduled_backups(first)
+    assert not store.list_backups()
+
+    store.run_scheduled_backups(first + timedelta(days=1))
+    assert [item["category"] for item in store.list_backups()] == ["daily"]
+    store.run_scheduled_backups(first + timedelta(days=1, hours=1))
+    assert len(store.list_backups()) == 1
+
+
+def test_delete_requires_confirmation(store):
+    backup = store.create_backup()
+    with pytest.raises(DomainError):
+        store.delete_backup(backup.name, "no")
+    store.delete_backup(backup.name, "DELETE")
+    assert not backup.exists()

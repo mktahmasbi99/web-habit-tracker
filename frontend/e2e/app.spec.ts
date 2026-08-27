@@ -18,6 +18,12 @@ test("creates and completes a habit", async ({ page }) => {
 test("shows the import safeguards", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("button", { name: "Create backup" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Server backups" })).toBeVisible();
+  await page.getByRole("button", { name: "Advanced" }).click();
+  await expect(page.getByRole("button", { name: "Save settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Import legacy database" })).toBeHidden();
+  await page.getByRole("button", { name: "Import legacy database" }).click();
   await expect(page.getByRole("heading", { name: "Import legacy database" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Replace database" })).toBeDisabled();
 });

@@ -16,4 +16,15 @@ export interface NoteSummary {
   id: number; name: string; startDate: string; archived: boolean; noteCount: number;
 }
 export interface HabitNote { habitId: number; habitName: string; date: string; body: string }
-
+export type BackupCategory = "daily" | "weekly" | "on-demand" | "pre-import" | "pre-restore";
+export interface BackupFile {
+  filename: string; category: BackupCategory; createdAt: string; size: number; safety: boolean;
+}
+export interface BackupSettings {
+  dailyEnabled: boolean; dailyTime: string; dailyRetention: number;
+  weeklyEnabled: boolean; weeklyDay: number; weeklyTime: string; weeklyRetention: number;
+  safetyRetention: number;
+}
+export interface SystemNotification {
+  id: number | string; kind: string; title: string; message: string; createdAt: string;
+}

@@ -23,6 +23,17 @@ EXPECTED_COLUMNS = {
     },
 }
 
+BACKUP_APP_ID = "web-habit-tracker"
+BACKUP_FORMAT_VERSION = 1
+BACKUP_PREFIXES = {
+    "daily": "a-daily",
+    "weekly": "a-weekly",
+    "on-demand": "o",
+    "pre-import": "pre-import",
+    "pre-restore": "pre-restore",
+}
+SAFETY_BACKUP_TYPES = {"pre-import", "pre-restore"}
+
 
 class DomainError(ValueError):
     pass
@@ -37,6 +48,7 @@ class HabitDatabase:
         self.settings = settings
         self.path = settings.database_path
         self._replacement_lock = threading.RLock()
+        self._memory_notifications: list[dict] = []
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.migrate(self.path)
 
@@ -48,6 +60,8 @@ class HabitDatabase:
         connection.execute("PRAGMA busy_timeout = 5000")
         if path is None or path == self.path:
             connection.execute("PRAGMA journal_mode = WAL")
+        else:
+            connection.execute("PRAGMA journal_mode = DELETE")
         try:
             yield connection
         finally:
@@ -107,6 +121,37 @@ class HabitDatabase:
                 CREATE INDEX IF NOT EXISTS idx_habit_notes_date ON habit_notes(note_date);
                 CREATE INDEX IF NOT EXISTS idx_archive_periods_habit_dates
                     ON habit_archive_periods(habit_id, archived_at, resurrected_at);
+                CREATE TABLE IF NOT EXISTS web_backup_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    daily_enabled INTEGER NOT NULL DEFAULT 1,
+                    daily_time TEXT NOT NULL DEFAULT '01:00',
+                    daily_retention INTEGER NOT NULL DEFAULT 7,
+                    weekly_enabled INTEGER NOT NULL DEFAULT 1,
+                    weekly_day INTEGER NOT NULL DEFAULT 6,
+                    weekly_time TEXT NOT NULL DEFAULT '01:00',
+                    weekly_retention INTEGER NOT NULL DEFAULT 8,
+                    safety_retention INTEGER NOT NULL DEFAULT 8,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS web_backup_runs (
+                    backup_type TEXT PRIMARY KEY,
+                    last_scheduled_date TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS web_system_notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    dismissed INTEGER NOT NULL DEFAULT 0
+                );
+                CREATE TABLE IF NOT EXISTS web_backup_metadata (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    app_id TEXT NOT NULL,
+                    format_version INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    category TEXT NOT NULL
+                );
                 """
             )
             habit_columns = {
@@ -119,6 +164,11 @@ class HabitDatabase:
             self._repair_legacy_completed_at(connection)
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (1)"
+            )
+            connection.execute("""INSERT OR IGNORE INTO web_backup_settings(id)
+                                  VALUES (1)""")
+            connection.execute(
+                "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (2)"
             )
             connection.execute("PRAGMA optimize")
             connection.commit()
@@ -440,6 +490,257 @@ class HabitDatabase:
         except sqlite3.DatabaseError as exc:
             raise ImportValidationError("The selected file is not a valid SQLite database.") from exc
 
+    @property
+    def backup_directory(self) -> Path:
+        return self.path.parent / "backups"
+
+    def backup_settings(self) -> dict:
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM web_backup_settings WHERE id = 1").fetchone()
+        return {
+            "dailyEnabled": bool(row["daily_enabled"]), "dailyTime": row["daily_time"],
+            "dailyRetention": row["daily_retention"], "weeklyEnabled": bool(row["weekly_enabled"]),
+            "weeklyDay": row["weekly_day"], "weeklyTime": row["weekly_time"],
+            "weeklyRetention": row["weekly_retention"], "safetyRetention": row["safety_retention"],
+        }
+
+    def update_backup_settings(self, values: dict) -> dict:
+        for key in ("dailyTime", "weeklyTime"):
+            value = values[key]
+            try:
+                hour, minute = (int(part) for part in value.split(":"))
+            except (ValueError, AttributeError):
+                raise DomainError("Backup times must use HH:MM format.") from None
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise DomainError("Choose a valid backup time.")
+        if not 0 <= values["weeklyDay"] <= 6:
+            raise DomainError("Choose a valid weekly backup day.")
+        if not 1 <= values["dailyRetention"] <= 365 or not 1 <= values["weeklyRetention"] <= 365:
+            raise DomainError("Backup retention must be between 1 and 365.")
+        with self.connect() as connection:
+            connection.execute("""UPDATE web_backup_settings SET
+                daily_enabled = ?, daily_time = ?, daily_retention = ?, weekly_enabled = ?,
+                weekly_day = ?, weekly_time = ?, weekly_retention = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1""", (
+                int(values["dailyEnabled"]), values["dailyTime"], values["dailyRetention"],
+                int(values["weeklyEnabled"]), values["weeklyDay"], values["weeklyTime"],
+                values["weeklyRetention"],
+            ))
+            connection.commit()
+        self._prune_backups("daily", values["dailyRetention"])
+        self._prune_backups("weekly", values["weeklyRetention"])
+        return self.backup_settings()
+
+    def _backup_filename(self, category: str) -> Path:
+        stamp = datetime.now(self.settings.timezone).strftime("%Y%m%d-%H%M%S")
+        prefix = BACKUP_PREFIXES[category]
+        candidate = self.backup_directory / f"{prefix}-habit_tracker-{stamp}.sqlite3"
+        counter = 2
+        while candidate.exists():
+            candidate = self.backup_directory / f"{prefix}-habit_tracker-{stamp}-{counter}.sqlite3"
+            counter += 1
+        return candidate
+
+    def _write_backup_marker(self, path: Path, category: str) -> None:
+        with sqlite3.connect(path) as connection:
+            connection.execute("PRAGMA journal_mode = DELETE")
+            connection.execute("""CREATE TABLE IF NOT EXISTS web_backup_metadata (
+                id INTEGER PRIMARY KEY CHECK (id = 1), app_id TEXT NOT NULL,
+                format_version INTEGER NOT NULL, created_at TEXT NOT NULL, category TEXT NOT NULL)""")
+            connection.execute("DELETE FROM web_backup_metadata")
+            connection.execute("INSERT INTO web_backup_metadata VALUES (1, ?, ?, ?, ?)", (
+                BACKUP_APP_ID, BACKUP_FORMAT_VERSION,
+                datetime.now(self.settings.timezone).isoformat(), category,
+            ))
+            connection.commit()
+            if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise DomainError("The created backup failed its integrity check.")
+
+    def create_backup(self, category: str = "on-demand") -> Path:
+        if category not in BACKUP_PREFIXES:
+            raise DomainError("Unknown backup category.")
+        with self._replacement_lock:
+            self.backup_directory.mkdir(parents=True, exist_ok=True)
+            destination = self._backup_filename(category)
+            try:
+                with self.connect() as source, sqlite3.connect(destination) as backup:
+                    source.backup(backup)
+                self._write_backup_marker(destination, category)
+            except Exception:
+                destination.unlink(missing_ok=True)
+                raise
+            settings = self.backup_settings()
+            if category == "daily":
+                self._prune_backups(category, settings["dailyRetention"])
+            elif category == "weekly":
+                self._prune_backups(category, settings["weeklyRetention"])
+            elif category in SAFETY_BACKUP_TYPES:
+                self._prune_safety_backups(settings["safetyRetention"])
+            return destination
+
+    def _category_for_path(self, path: Path) -> str | None:
+        if path.suffix != ".sqlite3":
+            return None
+        for category, prefix in BACKUP_PREFIXES.items():
+            if path.name.startswith(f"{prefix}-"):
+                return category
+        return None
+
+    def _prune_backups(self, category: str, keep: int) -> None:
+        if not self.backup_directory.exists():
+            return
+        paths = sorted((p for p in self.backup_directory.iterdir()
+                        if p.is_file() and self._category_for_path(p) == category),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in paths[keep:]:
+            path.unlink(missing_ok=True)
+
+    def _prune_safety_backups(self, keep: int) -> None:
+        if not self.backup_directory.exists():
+            return
+        paths = sorted((p for p in self.backup_directory.iterdir()
+                        if p.is_file() and self._category_for_path(p) in SAFETY_BACKUP_TYPES),
+                       key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in paths[keep:]:
+            path.unlink(missing_ok=True)
+
+    def list_backups(self) -> list[dict]:
+        if not self.backup_directory.exists():
+            return []
+        result = []
+        for path in self.backup_directory.iterdir():
+            category = self._category_for_path(path)
+            if not path.is_file() or category is None:
+                continue
+            stat = path.stat()
+            result.append({
+                "filename": path.name, "category": category,
+                "createdAt": datetime.fromtimestamp(stat.st_mtime, self.settings.timezone).isoformat(),
+                "size": stat.st_size, "safety": category in SAFETY_BACKUP_TYPES,
+            })
+        return sorted(result, key=lambda item: (item["createdAt"], item["filename"]), reverse=True)
+
+    def backup_path(self, filename: str) -> Path:
+        if Path(filename).name != filename:
+            raise DomainError("Invalid backup filename.")
+        candidate = (self.backup_directory / filename).resolve()
+        if candidate.parent != self.backup_directory.resolve() or not candidate.is_file():
+            raise DomainError("Backup not found.")
+        if self._category_for_path(candidate) is None:
+            raise DomainError("Backup not found.")
+        return candidate
+
+    def delete_backup(self, filename: str, confirmation: str) -> None:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to remove this backup.")
+        self.backup_path(filename).unlink()
+
+    def validate_web_backup(self, path: Path) -> None:
+        self.validate_import(path)
+        try:
+            with self.connect(path) as connection:
+                row = connection.execute("SELECT app_id, format_version FROM web_backup_metadata WHERE id = 1").fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise ImportValidationError("This is not a web-habit-tracker backup.") from exc
+        if row is None or row["app_id"] != BACKUP_APP_ID or row["format_version"] != BACKUP_FORMAT_VERSION:
+            raise ImportValidationError("This is not a supported web-habit-tracker backup.")
+
+    def _restore_staged(self, staged: Path, confirmation: str) -> str:
+        if confirmation != "RESTORE":
+            raise DomainError("Type RESTORE to replace the current database.")
+        self.validate_web_backup(staged)
+        self.migrate(staged)
+        self.validate_web_backup(staged)
+        current_settings = self.backup_settings()
+        safety = self.create_backup("pre-restore")
+        os.replace(staged, self.path)
+        for suffix in ("-wal", "-shm"):
+            Path(f"{self.path}{suffix}").unlink(missing_ok=True)
+        self.update_backup_settings(current_settings)
+        return safety.name
+
+    def restore_server_backup(self, filename: str, confirmation: str) -> str:
+        source = self.backup_path(filename)
+        with self._replacement_lock, tempfile.TemporaryDirectory(dir=self.path.parent) as temp_dir:
+            staged = Path(temp_dir) / "staged.sqlite3"
+            with sqlite3.connect(source) as original, sqlite3.connect(staged) as copy:
+                original.backup(copy)
+            return self._restore_staged(staged, confirmation)
+
+    def restore_uploaded_backup(self, upload: bytes, confirmation: str) -> str:
+        if not upload:
+            raise DomainError("Choose a backup file.")
+        if len(upload) > self.settings.max_import_bytes:
+            raise DomainError("Backup files cannot exceed 100 MB.")
+        with self._replacement_lock, tempfile.TemporaryDirectory(dir=self.path.parent) as temp_dir:
+            staged = Path(temp_dir) / "staged.sqlite3"
+            staged.write_bytes(upload)
+            return self._restore_staged(staged, confirmation)
+
+    def _record_backup_failure(self, backup_type: str, exc: Exception) -> None:
+        notification = {
+            "kind": "backup-failed", "title": f"{backup_type.title()} backup failed",
+            "message": str(exc), "createdAt": datetime.now(self.settings.timezone).isoformat(),
+        }
+        try:
+            with self.connect() as connection:
+                connection.execute("""INSERT INTO web_system_notifications
+                    (kind, title, message, created_at) VALUES (?, ?, ?, ?)""", (
+                    notification["kind"], notification["title"], notification["message"], notification["createdAt"],
+                ))
+                connection.commit()
+        except Exception:
+            notification["id"] = f"memory-{len(self._memory_notifications) + 1}"
+            self._memory_notifications.append(notification)
+
+    def system_notifications(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT id, kind, title, message, created_at
+                FROM web_system_notifications WHERE dismissed = 0 ORDER BY id DESC""").fetchall()
+        persisted = [{"id": row["id"], "kind": row["kind"], "title": row["title"],
+                      "message": row["message"], "createdAt": row["created_at"]} for row in rows]
+        return self._memory_notifications[::-1] + persisted
+
+    def dismiss_system_notification(self, notification_id: int) -> None:
+        with self.connect() as connection:
+            connection.execute("UPDATE web_system_notifications SET dismissed = 1 WHERE id = ?", (notification_id,))
+            connection.commit()
+
+    def run_scheduled_backups(self, now: datetime | None = None) -> None:
+        current = now or datetime.now(self.settings.timezone)
+        settings = self.backup_settings()
+        schedules = [
+            ("daily", settings["dailyEnabled"], settings["dailyTime"], None),
+            ("weekly", settings["weeklyEnabled"], settings["weeklyTime"], settings["weeklyDay"]),
+        ]
+        for category, enabled, time_text, weekday in schedules:
+            if not enabled:
+                continue
+            hour, minute = (int(part) for part in time_text.split(":"))
+            due = current.date()
+            if weekday is not None:
+                due -= timedelta(days=(due.weekday() - weekday) % 7)
+            scheduled = datetime.combine(due, datetime.min.time(), self.settings.timezone).replace(hour=hour, minute=minute)
+            if scheduled > current:
+                due -= timedelta(days=7 if weekday is not None else 1)
+            with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                row = connection.execute("SELECT last_scheduled_date FROM web_backup_runs WHERE backup_type = ?", (category,)).fetchone()
+                if row is None:
+                    connection.execute("INSERT INTO web_backup_runs VALUES (?, ?)", (category, due.isoformat()))
+                    connection.commit()
+                    continue
+                if row["last_scheduled_date"] >= due.isoformat():
+                    connection.rollback()
+                    continue
+                connection.execute("UPDATE web_backup_runs SET last_scheduled_date = ? WHERE backup_type = ?", (due.isoformat(), category))
+                connection.commit()
+            try:
+                self.create_backup(category)
+            except Exception as exc:
+                self._record_backup_failure(category, exc)
+                continue
+
     def import_database(self, upload: bytes, confirmation: str) -> str:
         if confirmation != "IMPORT":
             raise DomainError("Type IMPORT to replace the current database.")
@@ -454,13 +755,7 @@ class HabitDatabase:
             self.validate_import(staged)
             self.migrate(staged)
             self.validate_import(staged)
-            backups = self.path.parent / "backups"
-            backups.mkdir(exist_ok=True)
-            stamp = datetime.now(self.settings.timezone).strftime("%Y%m%d-%H%M%S")
-            backup = backups / f"pre-import-{stamp}.sqlite3"
-            if self.path.exists():
-                with self.connect() as source, sqlite3.connect(backup) as destination:
-                    source.backup(destination)
+            backup = self.create_backup("pre-import")
             os.replace(staged, self.path)
             for suffix in ("-wal", "-shm"):
                 Path(f"{self.path}{suffix}").unlink(missing_ok=True)
