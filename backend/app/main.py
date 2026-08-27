@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
@@ -11,7 +12,14 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import load_settings
 from .database import DomainError, HabitDatabase
-from .schemas import BackupAction, BackupDelete, BackupSettingsUpdate, HabitCreate, NoteUpdate, StatusUpdate
+from .schemas import (
+    BackupAction,
+    BackupDelete,
+    BackupSettingsUpdate,
+    HabitCreate,
+    NoteUpdate,
+    StatusUpdate,
+)
 
 settings = load_settings()
 database = HabitDatabase(settings)
@@ -21,7 +29,7 @@ async def backup_scheduler() -> None:
     while True:
         try:
             await asyncio.to_thread(database.run_scheduled_backups)
-        except Exception as exc:
+        except (DomainError, OSError, sqlite3.Error) as exc:
             database._record_backup_failure("scheduled", exc)
         await asyncio.sleep(60)
 

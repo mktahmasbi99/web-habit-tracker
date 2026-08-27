@@ -689,7 +689,7 @@ class HabitDatabase:
                     notification["kind"], notification["title"], notification["message"], notification["createdAt"],
                 ))
                 connection.commit()
-        except Exception:
+        except (OSError, sqlite3.Error):
             notification["id"] = f"memory-{len(self._memory_notifications) + 1}"
             self._memory_notifications.append(notification)
 
@@ -737,7 +737,7 @@ class HabitDatabase:
                 connection.commit()
             try:
                 self.create_backup(category)
-            except Exception as exc:
+            except (DomainError, OSError, sqlite3.Error) as exc:
                 self._record_backup_failure(category, exc)
                 continue
 
