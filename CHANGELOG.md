@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Backfill newly created habits that start in the past as Done from their start date through yesterday.
+- Add Ctrl+Enter as a keyboard shortcut for saving an open note editor.
 - Show the ISO date subtitle only beneath Today, Yesterday, and Tomorrow, avoiding redundant dates beneath ordinary day headings.
 - Add downloadable on-demand backups, GUI-configured daily and weekly schedules, retention controls, tagged backup browsing, and failure notifications.
 - Add validated server-side and uploaded backup restore, pre-restore safety snapshots, explicit web-backup markers, and confirmed backup deletion.

@@ -229,6 +229,7 @@ class HabitDatabase:
     def create_habit(self, name: str, start_date: str) -> dict:
         cleaned = self._clean_name(name)
         start = self.parse_day(start_date)
+        today = self.today()
         with self.connect() as connection, connection:
             cursor = connection.execute(
                 "INSERT INTO habits(name, start_date) VALUES (?, ?)",
@@ -236,7 +237,7 @@ class HabitDatabase:
             )
             habit_id = cursor.lastrowid
             current = start
-            while current < self.today():
+            while current < today:
                 connection.execute(
                     "INSERT INTO habit_logs(habit_id, log_date, status) VALUES (?, ?, 'done')",
                     (habit_id, current.isoformat()),

@@ -32,11 +32,28 @@ def test_pending_is_no_log_and_status_can_be_undone(store):
 def test_past_start_is_backfilled_done(store):
     today = store.today()
     start = today - timedelta(days=2)
-    store.create_habit("Walk", start.isoformat())
+    habit = store.create_habit("Walk", start.isoformat())
     assert [
         store.habits_on((start + timedelta(days=offset)).isoformat())[0]["status"]
         for offset in range(3)
     ] == ["done", "done", "pending"]
+    with store.connect() as connection:
+        logs = connection.execute(
+            "SELECT log_date, status FROM habit_logs WHERE habit_id = ? ORDER BY log_date",
+            (habit["id"],),
+        ).fetchall()
+    assert [(row["log_date"], row["status"]) for row in logs] == [
+        (start.isoformat(), "done"),
+        ((today - timedelta(days=1)).isoformat(), "done"),
+    ]
+
+
+def test_today_and_future_starts_are_not_backfilled(store):
+    today = store.today()
+    store.create_habit("Today", today.isoformat())
+    store.create_habit("Later", (today + timedelta(days=1)).isoformat())
+    with store.connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM habit_logs").fetchone()[0] == 0
 
 
 def test_historical_pending_breaks_current_streak(store):

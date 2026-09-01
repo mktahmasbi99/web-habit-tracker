@@ -52,6 +52,19 @@ describe("Habit Tracker", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Yesterday" })).toBeInTheDocument());
   });
 
+  it("saves an open note with Ctrl+Enter", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Read" });
+    await user.click(screen.getByRole("button", { name: "Add note for Read" }));
+    const note = await screen.findByRole("textbox", { name: "Note" });
+    await user.type(note, "Finished a chapter");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      "/api/habits/1/days/2026-08-26/note",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ body: "Finished a chapter" }) }),
+    ));
+  });
+
   it("places database import in the collapsed Backup and restore advanced section", async () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });

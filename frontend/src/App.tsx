@@ -83,8 +83,8 @@ function NoteEditor({ habit, date, initial, onClose, onSaved, reportError }: {
 }) {
   const [body, setBody] = useState(initial ?? ""); const [loading, setLoading] = useState(initial === undefined); const [saving, setSaving] = useState(false);
   useEffect(() => { if (initial === undefined) void api.note(habit.id, date).then(value => setBody(value.body)).catch(reportError).finally(() => setLoading(false)); }, [habit.id, date, initial, reportError]);
-  return <Modal title={habit.name} onClose={onClose}><div className="note-date">{prettyDate(date)}</div>{loading ? <div className="loading">Loading note…</div> : <form className="form" onSubmit={event => { event.preventDefault(); setSaving(true); void api.saveNote(habit.id, date, body).then(onSaved).catch(reportError).finally(() => setSaving(false)); }}>
-    <label className="visually-hidden" htmlFor="note-body">Note</label><textarea id="note-body" autoFocus value={body} maxLength={20_000} onChange={event => setBody(event.target.value)} placeholder="Add a note for this day…" />
+  return <Modal title={habit.name} onClose={onClose}><div className="note-date">{prettyDate(date)}</div>{loading ? <div className="loading">Loading note…</div> : <form className="form" onSubmit={event => { event.preventDefault(); if (saving) return; setSaving(true); void api.saveNote(habit.id, date, body).then(onSaved).catch(reportError).finally(() => setSaving(false)); }}>
+    <label className="visually-hidden" htmlFor="note-body">Note</label><textarea id="note-body" autoFocus value={body} maxLength={20_000} onChange={event => setBody(event.target.value)} onKeyDown={event => { if (event.ctrlKey && event.key === "Enter" && !saving) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Add a note for this day…" />
     <div className="form-meta"><span>{body.length.toLocaleString()} / 20,000</span><button className="form-submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></div>
   </form>}</Modal>;
 }
