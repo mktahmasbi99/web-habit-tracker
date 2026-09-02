@@ -31,8 +31,9 @@ BACKUP_PREFIXES = {
     "on-demand": "o",
     "pre-import": "pre-import",
     "pre-restore": "pre-restore",
+    "pre-delete": "pre-delete",
 }
-SAFETY_BACKUP_TYPES = {"pre-import", "pre-restore"}
+SAFETY_BACKUP_TYPES = {"pre-import", "pre-restore", "pre-delete"}
 
 
 class DomainError(ValueError):
@@ -246,9 +247,9 @@ class HabitDatabase:
         return {"id": habit_id, "name": cleaned, "startDate": start.isoformat()}
 
     def _active_sql(self) -> str:
-        return """h.start_date <= ? AND h.archived_at IS NULL AND NOT EXISTS (
+        return """h.start_date <= ? AND NOT EXISTS (
             SELECT 1 FROM habit_archive_periods ap
-            WHERE ap.habit_id = h.id AND ap.archived_at <= ?
+            WHERE ap.habit_id = h.id AND ap.archived_at < ?
               AND (ap.resurrected_at IS NULL OR ap.resurrected_at > ?)
         )"""
 
@@ -281,6 +282,174 @@ class HabitDatabase:
             }
             for row in rows
         ]
+
+    def habit_summaries(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT h.id, h.name, h.start_date, h.archived_at,
+                          COUNT(n.habit_id) AS note_count
+                   FROM habits h
+                   LEFT JOIN habit_notes n ON n.habit_id = h.id
+                   GROUP BY h.id, h.name, h.start_date, h.archived_at
+                   ORDER BY h.start_date, h.name, h.id"""
+            ).fetchall()
+        output = []
+        for row in rows:
+            archived_at = row["archived_at"]
+            output.append({
+                "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+                "archived": archived_at is not None, "archivedAt": archived_at,
+                "latestActiveRange": self._latest_active_range(row["id"]),
+                "noteCount": row["note_count"],
+            })
+        return output
+
+    def _habit_row(self, connection: sqlite3.Connection, habit_id: int) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT id, name, start_date, archived_at FROM habits WHERE id = ?", (habit_id,)
+        ).fetchone()
+        if row is None:
+            raise DomainError("Habit not found.")
+        return row
+
+    def _latest_active_range(self, habit_id: int) -> dict | None:
+        periods = self.archive_periods(habit_id)
+        if not periods:
+            return None
+        latest = periods[-1]
+        return {"startDate": latest["startDate"], "endDate": latest["endDate"]}
+
+    def habit_detail(self, habit_id: int) -> dict:
+        summary = next((item for item in self.habit_summaries() if item["id"] == habit_id), None)
+        if summary is None:
+            raise DomainError("Habit not found.")
+        through = summary["archivedAt"] or self.today().isoformat()
+        streaks = self.streaks_in_range(habit_id, summary["startDate"], through)
+        return {
+            **summary,
+            "currentStreak": self._current_streak_in_range(habit_id, summary["startDate"], through, streaks),
+            "longestStreak": streaks[0] if streaks else None,
+            "streaks": streaks,
+        }
+
+    def rename_habit(self, habit_id: int, name: str) -> dict:
+        cleaned = self._clean_name(name)
+        with self.connect() as connection, connection:
+            self._habit_row(connection, habit_id)
+            connection.execute("UPDATE habits SET name = ? WHERE id = ?", (cleaned, habit_id))
+        return self.habit_detail(habit_id)
+
+    def archive_habit(self, habit_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            habit = self._habit_row(connection, habit_id)
+            if habit["archived_at"] is not None:
+                raise DomainError("Habit is already archived.")
+            if today < habit["start_date"]:
+                raise DomainError("A habit cannot be archived before its start date.")
+            connection.execute("UPDATE habits SET archived_at = ? WHERE id = ?", (today, habit_id))
+            connection.execute(
+                "INSERT INTO habit_archive_periods(habit_id, archived_at) VALUES (?, ?)",
+                (habit_id, today),
+            )
+        return self.habit_detail(habit_id)
+
+    def restore_habit(self, habit_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            habit = self._habit_row(connection, habit_id)
+            if habit["archived_at"] is None:
+                raise DomainError("Habit is already active.")
+            connection.execute("UPDATE habits SET archived_at = NULL WHERE id = ?", (habit_id,))
+            cursor = connection.execute(
+                """UPDATE habit_archive_periods SET resurrected_at = ?
+                   WHERE id = (SELECT id FROM habit_archive_periods
+                               WHERE habit_id = ? AND resurrected_at IS NULL
+                               ORDER BY archived_at DESC, id DESC LIMIT 1)""",
+                (today, habit_id),
+            )
+            if cursor.rowcount != 1:
+                raise DomainError("The habit's archive history is incomplete.")
+        return self.habit_detail(habit_id)
+
+    def delete_habit(self, habit_id: int, confirmation: str) -> str:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to permanently delete this habit.")
+        with self._replacement_lock:
+            with self.connect() as connection:
+                self._habit_row(connection, habit_id)
+            safety = self.create_backup("pre-delete")
+            with self.connect() as connection, connection:
+                cursor = connection.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
+                if cursor.rowcount != 1:
+                    raise DomainError("Habit not found.")
+        return safety.name
+
+    def archive_periods(self, habit_id: int) -> list[dict]:
+        with self.connect() as connection:
+            habit = self._habit_row(connection, habit_id)
+            rows = connection.execute(
+                """SELECT id, archived_at, resurrected_at FROM habit_archive_periods
+                   WHERE habit_id = ? ORDER BY archived_at, id""", (habit_id,)
+            ).fetchall()
+        start = habit["start_date"]
+        periods = []
+        for index, row in enumerate(rows, start=1):
+            end = row["archived_at"]
+            streaks = self.streaks_in_range(habit_id, start, end)
+            periods.append({
+                "id": row["id"], "number": index, "startDate": start, "endDate": end,
+                "currentStreak": self._current_streak_in_range(habit_id, start, end, streaks),
+                "longestStreak": streaks[0] if streaks else None, "streaks": streaks,
+                "notes": self.notes_for_range(habit_id, start, end),
+            })
+            if row["resurrected_at"] is None:
+                break
+            start = row["resurrected_at"]
+        return periods
+
+    def notes_for_range(self, habit_id: int, start: str, end: str) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT n.habit_id, h.name, n.note_date, n.body
+                   FROM habit_notes n JOIN habits h ON h.id = n.habit_id
+                   WHERE n.habit_id = ? AND n.note_date BETWEEN ? AND ?
+                   ORDER BY n.note_date DESC""", (habit_id, start, end)
+            ).fetchall()
+        return [{"habitId": row["habit_id"], "habitName": row["name"],
+                 "date": row["note_date"], "body": row["body"]} for row in rows]
+
+    def streaks_in_range(self, habit_id: int, start_value: str, end_value: str) -> list[dict]:
+        start, end = self.parse_day(start_value), self.parse_day(end_value)
+        with self.connect() as connection:
+            self._habit_row(connection, habit_id)
+            rows = connection.execute(
+                """SELECT log_date FROM habit_logs
+                   WHERE habit_id = ? AND status = 'done' AND log_date BETWEEN ? AND ?""",
+                (habit_id, start.isoformat(), end.isoformat()),
+            ).fetchall()
+        done = {row["log_date"] for row in rows}
+        output, streak_start = [], None
+        current = start
+        while current <= end:
+            if current.isoformat() in done:
+                streak_start = streak_start or current
+            elif streak_start:
+                output.append(self._streak(streak_start, current - timedelta(days=1)))
+                streak_start = None
+            current += timedelta(days=1)
+        if streak_start:
+            output.append(self._streak(streak_start, end))
+        return sorted(output, key=lambda item: (-item["length"], item["startDate"]))
+
+    def _current_streak_in_range(self, habit_id: int, start: str, end: str, streaks: list[dict]) -> int:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT status FROM habit_logs WHERE habit_id = ? AND log_date = ?", (habit_id, end)
+            ).fetchone()
+        expected = self.parse_day(end) if row and row["status"] == "done" else self.parse_day(end) - timedelta(days=1)
+        match = next((item for item in streaks if item["endDate"] == expected.isoformat()), None)
+        return match["length"] if match else 0
 
     def set_status(self, habit_id: int, day_value: str, status: str) -> None:
         day = self.parse_day(day_value).isoformat()

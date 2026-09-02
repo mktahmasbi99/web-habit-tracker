@@ -10,6 +10,7 @@ const ok = (value: unknown, status = 200) => Promise.resolve(new Response(
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
+    window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
       if (url === "/api/config") return ok({ today: "2026-08-26", timezone: "Europe/Warsaw" });
@@ -17,6 +18,10 @@ describe("Habit Tracker", () => {
       if (url === "/api/system-notifications") return ok([]);
       if (url === "/api/backups") return ok([]);
       if (url === "/api/backups/settings") return ok({ dailyEnabled: true, dailyTime: "01:00", dailyRetention: 7, weeklyEnabled: true, weeklyDay: 6, weeklyTime: "01:00", weeklyRetention: 8, safetyRetention: 8 });
+      if (url === "/api/habits") return ok([{ id: 1, name: "Read", startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0 }, { id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1 }]);
+      if (url === "/api/habits/1") return ok({ id: 1, name: "Read", startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] });
+      if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
+      if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: "Read", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: false }]);
       if (url === "/api/statistics") return ok([]);
       if (url === "/api/notes") return ok([]);
@@ -91,5 +96,22 @@ describe("Habit Tracker", () => {
     expect(screen.getByRole("heading", { name: "Server time" })).toBeInTheDocument();
     expect(screen.getByText(/timezone comes from the server/)).toBeInTheDocument();
     expect(screen.getByText("Europe/Warsaw")).toBeInTheDocument();
+  });
+
+  it("preserves the archived disclosure while a habit detail opens and closes", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const active = await screen.findByRole("button", { name: "Active habits" });
+    const archived = screen.getByRole("button", { name: "Archived habits" });
+    expect(active).toHaveAttribute("aria-expanded", "true");
+    expect(archived).toHaveAttribute("aria-expanded", "false");
+    await user.click(archived);
+    await user.click(await screen.findByRole("button", { name: /Run/ }));
+    expect(await screen.findByRole("heading", { name: "Run" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close habit details" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Close habit details" })).not.toBeInTheDocument());
+    expect(archived).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /Run/ })).toBeInTheDocument();
   });
 });

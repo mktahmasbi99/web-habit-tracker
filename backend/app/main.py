@@ -17,6 +17,8 @@ from .schemas import (
     BackupDelete,
     BackupSettingsUpdate,
     HabitCreate,
+    HabitDelete,
+    HabitRename,
     NoteUpdate,
     StatusUpdate,
 )
@@ -72,6 +74,41 @@ def day_habits(day: str) -> list[dict]:
 @app.post("/api/habits", status_code=201)
 def create_habit(payload: HabitCreate) -> dict:
     return database.create_habit(payload.name, payload.startDate)
+
+
+@app.get("/api/habits")
+def habits() -> list[dict]:
+    return database.habit_summaries()
+
+
+@app.get("/api/habits/{habit_id}")
+def habit_detail(habit_id: int) -> dict:
+    return database.habit_detail(habit_id)
+
+
+@app.patch("/api/habits/{habit_id}")
+def rename_habit(habit_id: int, payload: HabitRename) -> dict:
+    return database.rename_habit(habit_id, payload.name)
+
+
+@app.post("/api/habits/{habit_id}/archive")
+def archive_habit(habit_id: int) -> dict:
+    return database.archive_habit(habit_id)
+
+
+@app.post("/api/habits/{habit_id}/restore")
+def restore_habit(habit_id: int) -> dict:
+    return database.restore_habit(habit_id)
+
+
+@app.get("/api/habits/{habit_id}/archive-periods")
+def archive_periods(habit_id: int) -> list[dict]:
+    return database.archive_periods(habit_id)
+
+
+@app.delete("/api/habits/{habit_id}")
+def delete_habit(habit_id: int, payload: HabitDelete) -> dict[str, str]:
+    return {"status": "deleted", "backup": database.delete_habit(habit_id, payload.confirmation)}
 
 
 @app.put("/api/habits/{habit_id}/days/{day}/status", status_code=204)

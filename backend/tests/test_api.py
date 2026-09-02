@@ -59,3 +59,20 @@ def test_api_updates_backup_schedule(monkeypatch, tmp_path):
         assert response.status_code == 200
         assert response.json()["dailyTime"] == "03:15"
         assert response.json()["weeklyDay"] == 2
+
+
+def test_api_habit_management_workflow(monkeypatch, tmp_path):
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "management.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        today = client.get("/api/config").json()["today"]
+        habit_id = client.post("/api/habits", json={"name": "Read", "startDate": today}).json()["id"]
+        assert client.patch(f"/api/habits/{habit_id}", json={"name": "Books"}).json()["name"] == "Books"
+        assert client.post(f"/api/habits/{habit_id}/archive").json()["archived"] is True
+        assert len(client.get(f"/api/habits/{habit_id}/archive-periods").json()) == 1
+        assert client.post(f"/api/habits/{habit_id}/restore").json()["archived"] is False
+        deleted = client.request("DELETE", f"/api/habits/{habit_id}", json={"confirmation": "DELETE"})
+        assert deleted.status_code == 200
+        assert deleted.json()["backup"].startswith("pre-delete-")

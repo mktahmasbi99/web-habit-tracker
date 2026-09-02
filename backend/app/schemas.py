@@ -8,6 +8,14 @@ class HabitCreate(BaseModel):
     startDate: str
 
 
+class HabitRename(BaseModel):
+    name: str
+
+
+class HabitDelete(BaseModel):
+    confirmation: str
+
+
 class StatusUpdate(BaseModel):
     status: Literal["pending", "done", "missed"]
 

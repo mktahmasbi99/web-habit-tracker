@@ -4,6 +4,11 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add habit Management under More with active and archived disclosures, full-screen reusable habit details, inline rename, archive, confirmed restore, archive-period streak and note history, and confirmed permanent deletion.
+- Add pre-delete snapshots to the existing shared eight-backup safety retention pool and abort deletion if the snapshot cannot be created.
+- Preserve the Management disclosure state and scroll position when habit details close through X or browser Back.
+- Keep the legacy `resurrected_at` database column for import compatibility while using Restore consistently in user-facing copy and documentation.
+- Open habit details from the full daily habit card and simplify habit restoration to a normal confirmation without typed input.
 - Backfill newly created habits that start in the past as Done from their start date through yesterday.
 - Add Ctrl+Enter as a keyboard shortcut for saving an open note editor.
 - Show the ISO date subtitle only beneath Today, Yesterday, and Tomorrow, avoiding redundant dates beneath ordinary day headings.
@@ -13,6 +18,7 @@ All notable changes to this project are documented here.
 - Remove visible navigation captions while retaining accessible names for the icon buttons, and use a circled check for the primary habit view.
 - Group the collapsed Backup and restore and Advanced disclosures under a concise Data heading.
 - Rename Application to Server time and explain that its timezone and date values are read-only server settings.
+- Record user-configurable server timezone changes as planned future work.
 
 ## 1.0.0 - 2026-08-26
 

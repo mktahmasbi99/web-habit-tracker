@@ -196,3 +196,48 @@ def test_delete_requires_confirmation(store):
         store.delete_backup(backup.name, "no")
     store.delete_backup(backup.name, "DELETE")
     assert not backup.exists()
+
+
+def test_habit_lifecycle_preserves_history_and_uses_pre_delete_backup(store):
+    today = store.today()
+    start = today - timedelta(days=2)
+    habit = store.create_habit("  Read daily  ", start.isoformat())
+    store.save_note(habit["id"], start.isoformat(), "First day")
+
+    renamed = store.rename_habit(habit["id"], "Morning reading")
+    assert renamed["name"] == "Morning reading"
+
+    archived = store.archive_habit(habit["id"])
+    assert archived["archived"] is True
+    assert archived["latestActiveRange"] == {
+        "startDate": start.isoformat(), "endDate": today.isoformat(),
+    }
+    assert store.habits_on(today.isoformat())[0]["id"] == habit["id"]
+    assert store.habits_on((today + timedelta(days=1)).isoformat()) == []
+
+    restored = store.restore_habit(habit["id"])
+    assert restored["archived"] is False
+    assert store.habits_on(today.isoformat())[0]["id"] == habit["id"]
+    periods = store.archive_periods(habit["id"])
+    assert periods[0]["notes"][0]["body"] == "First day"
+
+    with pytest.raises(DomainError, match="DELETE"):
+        store.delete_habit(habit["id"], "delete")
+    backup_name = store.delete_habit(habit["id"], "DELETE")
+    assert backup_name.startswith("pre-delete-")
+    assert store.habit_summaries() == []
+    backup = store.path.parent / "backups" / backup_name
+    with sqlite3.connect(backup) as connection:
+        assert connection.execute("SELECT name FROM habits").fetchone()[0] == "Morning reading"
+
+
+def test_pre_delete_backups_share_safety_retention(store):
+    with store.connect() as connection:
+        connection.execute("UPDATE web_backup_settings SET safety_retention = 2 WHERE id = 1")
+        connection.commit()
+    for name in ("One", "Two", "Three"):
+        habit = store.create_habit(name, store.today().isoformat())
+        store.delete_habit(habit["id"], "DELETE")
+    safety = [item for item in store.list_backups() if item["safety"]]
+    assert len(safety) == 2
+    assert all(item["category"] == "pre-delete" for item in safety)
