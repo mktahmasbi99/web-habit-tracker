@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add a reusable full-screen note view with read-only display, explicit editing controls, ordinary delete confirmation, direct URLs, and a clear missing-note state.
+- Replace the Notes history dialog with the selected note immediately, then restore that history dialog when the note closes.
 - Add habit Management under More with active and archived disclosures, full-screen reusable habit details, inline rename, archive, confirmed restore, archive-period streak and note history, and confirmed permanent deletion.
 - Add pre-delete snapshots to the existing shared eight-backup safety retention pool and abort deletion if the snapshot cannot be created.
 - Preserve the Management disclosure state and scroll position when habit details close through X or browser Back.

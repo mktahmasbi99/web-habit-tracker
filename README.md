@@ -10,7 +10,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Daily habit creation from any selected date
 - Pending, Done, and Missed status controls
 - Current, longest, and historical streak statistics
-- Per-habit, per-day notes plus a notes index and history; press Ctrl+Enter while editing to save
+- Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
 - Unresolved past-date notifications inside the app
 - Validated import of compatible terminal/iPhone SQLite databases

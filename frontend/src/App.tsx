@@ -6,9 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import Calendar from "./components/Calendar";
 import Modal from "./components/Modal";
 import { api, ApiError } from "./lib/api";
-import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, NoteSummary, Statistic, Status, SystemNotification, Unresolved } from "./lib/types";
+import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, Unresolved } from "./lib/types";
 
 type Tab = "today" | "stats" | "notes" | "notifications" | "more";
+type NoteTarget = { habitId: number; habitName: string; date: string; create: boolean; archived?: boolean };
 const parseDay = (value: string) => new Date(`${value}T12:00:00Z`);
 const dayISO = (value: Date) => value.toISOString().slice(0, 10);
 const shiftDay = (value: string, offset: number) => {
@@ -21,15 +22,14 @@ function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: str
   return <div className="empty-state">{icon}<h2>{title}</h2><p>{detail}</p></div>;
 }
 
-function TodayPage({ config, selectedDate, onDate, onDataChange, reportError, openHabit }: {
+function TodayPage({ config, selectedDate, onDate, onDataChange, reportError, openHabit, openNote }: {
   config: Config; selectedDate: string; onDate: (date: string) => void;
-  onDataChange: () => void; reportError: (error: unknown) => void; openHabit?: (id: number) => void;
+  onDataChange: () => void; reportError: (error: unknown) => void; openHabit: (id: number) => void; openNote: (target: NoteTarget) => void;
 }) {
   const [habits, setHabits] = useState<HabitDay[]>([]);
   const [loading, setLoading] = useState(true);
   const [calendar, setCalendar] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [editing, setEditing] = useState<HabitDay | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
     try { setHabits(await api.habits(selectedDate)); } catch (error) { reportError(error); }
@@ -57,14 +57,13 @@ function TodayPage({ config, selectedDate, onDate, onDataChange, reportError, op
           <div className="status-group">{(["pending", "done", "missed"] as Status[]).map(status =>
             <button key={status} className={`status-button ${status} ${habit.status === status ? "active" : ""}`} onClick={() => void setStatus(habit, status)} aria-pressed={habit.status === status}>{statusLabels[status]}</button>
           )}</div>
-          <button className={`note-button ${habit.hasNote ? "has-note" : ""}`} onClick={() => setEditing(habit)} aria-label={`${habit.hasNote ? "Edit" : "Add"} note for ${habit.name}`}><StickyNote /></button>
+          <button className={`note-button ${habit.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: habit.id, habitName: habit.name, date: selectedDate, create: !habit.hasNote })} aria-label={`${habit.hasNote ? "View" : "Add"} note for ${habit.name}`}><StickyNote /></button>
         </div>
       </article>)}</div>}
     {calendar && <Modal title="Calendar" wide onClose={() => setCalendar(false)}><Calendar selected={selectedDate} today={config.today} onSelect={date => { onDate(date); setCalendar(false); }} /></Modal>}
     {adding && <AddHabit defaultDate={selectedDate} onClose={() => setAdding(false)} onSave={async (name, startDate) => {
       try { await api.createHabit(name, startDate); setAdding(false); await load(); onDataChange(); } catch (error) { reportError(error); }
     }} />}
-    {editing && <NoteEditor habit={editing} date={selectedDate} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); onDataChange(); }} reportError={reportError} />}
   </section>;
 }
 
@@ -77,18 +76,6 @@ function AddHabit({ defaultDate, onClose, onSave }: { defaultDate: string; onClo
   </form></Modal>;
 }
 
-function NoteEditor({ habit, date, initial, onClose, onSaved, reportError }: {
-  habit: Pick<HabitDay, "id" | "name">; date: string; initial?: string; onClose: () => void;
-  onSaved: () => Promise<void>; reportError: (error: unknown) => void;
-}) {
-  const [body, setBody] = useState(initial ?? ""); const [loading, setLoading] = useState(initial === undefined); const [saving, setSaving] = useState(false);
-  useEffect(() => { if (initial === undefined) void api.note(habit.id, date).then(value => setBody(value.body)).catch(reportError).finally(() => setLoading(false)); }, [habit.id, date, initial, reportError]);
-  return <Modal title={habit.name} onClose={onClose}><div className="note-date">{prettyDate(date)}</div>{loading ? <div className="loading">Loading note…</div> : <form className="form" onSubmit={event => { event.preventDefault(); if (saving) return; setSaving(true); void api.saveNote(habit.id, date, body).then(onSaved).catch(reportError).finally(() => setSaving(false)); }}>
-    <label className="visually-hidden" htmlFor="note-body">Note</label><textarea id="note-body" autoFocus value={body} maxLength={20_000} onChange={event => setBody(event.target.value)} onKeyDown={event => { if (event.ctrlKey && event.key === "Enter" && !saving) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }} placeholder="Add a note for this day…" />
-    <div className="form-meta"><span>{body.length.toLocaleString()} / 20,000</span><button className="form-submit" disabled={saving}>{saving ? "Saving…" : "Save"}</button></div>
-  </form>}</Modal>;
-}
-
 function StatsPage({ refresh, reportError }: { refresh: number; reportError: (error: unknown) => void }) {
   const [items, setItems] = useState<Statistic[]>([]); const [selected, setSelected] = useState<Statistic | null>(null);
   useEffect(() => { void api.statistics().then(setItems).catch(reportError); }, [refresh, reportError]);
@@ -97,22 +84,23 @@ function StatsPage({ refresh, reportError }: { refresh: number; reportError: (er
   </section>;
 }
 
-function NotesPage({ refresh, reportError, onDataChange }: { refresh: number; reportError: (error: unknown) => void; onDataChange: () => void }) {
+function NotesPage({ refresh, reportError, openNote, noteOpen }: { refresh: number; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void; noteOpen: boolean }) {
   const [summaries, setSummaries] = useState<NoteSummary[]>([]); const [showArchived, setShowArchived] = useState(false); const [selected, setSelected] = useState<NoteSummary | null>(null);
   const load = useCallback(() => api.noteSummaries().then(setSummaries).catch(reportError), [reportError]);
   useEffect(() => { void load(); }, [refresh, load]);
   const visible = summaries.filter(item => !item.archived || showArchived);
   return <section className="page list-page"><h1>Notes</h1>{summaries.length === 0 ? <EmptyState icon={<NotebookPen />} title="No habits" detail="Notes are organized by habit." /> : <div className="inset-list">{visible.map(item => <button className={`list-row ${item.archived ? "archived" : ""}`} key={item.id} onClick={() => setSelected(item)}><span><strong>{item.name}</strong><small>{item.noteCount} {item.noteCount === 1 ? "note" : "notes"}{item.archived ? " · Archived" : ""}</small></span><ChevronRight /></button>)}</div>}
     {summaries.some(item => item.archived) && <button className="text-button" onClick={() => setShowArchived(value => !value)}>{showArchived ? "Hide Archived Habits" : "View Archived Habits"}</button>}
-    {selected && <NoteHistory summary={selected} onClose={() => setSelected(null)} reportError={reportError} onDataChange={() => { void load(); onDataChange(); }} />}
+    {selected && !noteOpen && <NoteHistory summary={selected} onClose={() => setSelected(null)} reportError={reportError} openNote={openNote} />}
   </section>;
 }
 
-function NoteHistory({ summary, onClose, reportError, onDataChange }: { summary: NoteSummary; onClose: () => void; reportError: (error: unknown) => void; onDataChange: () => void }) {
-  const [notes, setNotes] = useState<HabitNote[]>([]); const [editing, setEditing] = useState<HabitNote | null>(null);
+function NoteHistory({ summary, onClose, reportError, openNote }: { summary: NoteSummary; onClose: () => void; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void }) {
+  const [notes, setNotes] = useState<HabitNote[]>([]);
   const load = useCallback(() => api.habitNotes(summary.id).then(setNotes).catch(reportError), [summary.id, reportError]);
   useEffect(() => { void load(); }, [load]);
-  return <Modal title={summary.name} wide onClose={onClose}>{notes.length === 0 ? <EmptyState icon={<StickyNote />} title="No notes yet" detail="Add notes from Today, where you can choose a date." /> : <div className="note-history">{notes.map(note => <button key={note.date} onClick={() => setEditing(note)}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div>}{editing && <NoteEditor habit={{ id: summary.id, name: summary.name }} date={editing.date} initial={editing.body} onClose={() => setEditing(null)} reportError={reportError} onSaved={async () => { setEditing(null); await load(); onDataChange(); }} />}</Modal>;
+  useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
+  return <Modal title={summary.name} wide onClose={onClose}>{notes.length === 0 ? <EmptyState icon={<StickyNote />} title="No notes yet" detail="Add notes from Today, where you can choose a date." /> : <div className="note-history">{notes.map(note => <button key={note.date} onClick={() => openNote({ habitId: summary.id, habitName: summary.name, date: note.date, create: false, archived: summary.archived })}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div>}</Modal>;
 }
 
 function NotificationsPage({ refresh, reportError, openDate, onDataChange }: { refresh: number; reportError: (error: unknown) => void; openDate: (date: string) => void; onDataChange: () => void }) {
@@ -124,6 +112,19 @@ function NotificationsPage({ refresh, reportError, openDate, onDataChange }: { r
     catch (error) { reportError(error); }
   };
   return <section className="page list-page"><h1>Notifications</h1>{systemItems.length > 0 && <div className="settings-group system-notifications"><h2>System</h2>{systemItems.map(item => <div className="system-notification" key={item.id}><div><strong>{item.title}</strong><p>{item.message}</p><small>{new Date(item.createdAt).toLocaleString("en-GB")}</small></div>{typeof item.id === "number" && <button className="small-button" onClick={() => void dismiss(item)}>Dismiss</button>}</div>)}</div>}{items.length === 0 && systemItems.length === 0 ? <EmptyState icon={<BellOff />} title="No notifications" detail="All past habits are resolved and the system is running normally." /> : items.length > 0 && <div className="inset-list">{items.map(item => <button className="list-row" key={item.date} onClick={() => openDate(item.date)}><span><strong>{prettyDate(item.date)}</strong><small>{item.pendingCount} {item.pendingCount === 1 ? "habit" : "habits"} unresolved</small></span><ChevronRight /></button>)}</div>}</section>;
+}
+
+function NoteDetailView({ target, onClose, onChanged, reportError }: { target: NoteTarget; onClose: () => void; onChanged: () => void; reportError: (error: unknown) => void }) {
+  const [note, setNote] = useState<NoteDetail | null>(null); const [body, setBody] = useState(""); const [editing, setEditing] = useState(target.create); const [notFound, setNotFound] = useState(false); const [menu, setMenu] = useState(false); const [confirmDelete, setConfirmDelete] = useState(false); const [saving, setSaving] = useState(false);
+  useEffect(() => { void api.note(target.habitId, target.date).then(value => { setNote(value); setBody(value.body); if (!value.exists && !target.create) setNotFound(true); }).catch(reportError); }, [target, reportError]);
+  useEffect(() => { const closeMenu = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(false); }; window.addEventListener("keydown", closeMenu); return () => window.removeEventListener("keydown", closeMenu); }, []);
+  const changed = () => { window.dispatchEvent(new Event("note-changed")); onChanged(); };
+  const save = async () => { setSaving(true); try { await api.saveNote(target.habitId, target.date, body); changed(); onClose(); } catch (error) { reportError(error); } finally { setSaving(false); } };
+  const remove = async () => { setSaving(true); try { await api.saveNote(target.habitId, target.date, ""); changed(); onClose(); } catch (error) { reportError(error); } finally { setSaving(false); } };
+  if (!note) return <div className="habit-detail-view"><div className="loading">Loading note…</div></div>;
+  if (notFound) return <div className="habit-detail-view"><header className="habit-detail-bar"><button className="round-bar-button" onClick={onClose} aria-label="Close note"><X /></button></header><main className="habit-detail-content"><EmptyState icon={<StickyNote />} title="Note not found" detail="It may have been deleted or removed by a database restore." /></main></div>;
+  const cancelEdit = () => { setBody(note.body); setEditing(false); };
+  return <div className="habit-detail-view"><header className="habit-detail-bar">{editing ? <><button className="bar-text-button" onClick={target.create ? onClose : cancelEdit}>{target.create ? "Close" : "Cancel"}</button><button className="bar-text-button save" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save"}</button></> : <><button className="round-bar-button" onClick={onClose} aria-label="Close note"><X /></button><div className="detail-actions"><button onClick={() => setEditing(true)} aria-label="Edit note"><Pencil /></button><div className="menu-anchor"><button onClick={() => setMenu(value => !value)} aria-label="More note options" aria-expanded={menu}><MoreHorizontal /></button>{menu && <><button className="menu-scrim" aria-label="Close menu" onClick={() => setMenu(false)} /><div className="habit-menu" role="menu"><button className="destructive-text" role="menuitem" onClick={() => { setMenu(false); setConfirmDelete(true); }}>Delete</button></div></>}</div></div></>}</header><main className="habit-detail-content note-detail-content"><h1>{note.habitName}</h1><p className="note-detail-date">{prettyDate(note.date)}</p>{note.archived && <span className="archive-badge detail-badge">Archived</span>}{editing ? <><label className="visually-hidden" htmlFor="note-detail-body">Note</label><textarea id="note-detail-body" className="note-detail-editor" autoFocus value={body} maxLength={20_000} onChange={event => setBody(event.target.value)} onKeyDown={event => { if (event.ctrlKey && event.key === "Enter" && !saving) { event.preventDefault(); void save(); } }} placeholder="Add a note for this day…" /><div className="note-detail-count">{body.length.toLocaleString()} / 20,000</div></> : <div className="note-detail-body">{note.body}</div>}</main>{confirmDelete && <Modal title="Delete note" onClose={() => setConfirmDelete(false)}><div className="confirmation-panel"><p className="delete-note-question">Delete this note?</p><div className="confirmation-actions"><button className="bar-text-button" onClick={() => setConfirmDelete(false)}>Cancel</button><button className="danger-button" disabled={saving} onClick={() => void remove()}>Delete</button></div></div></Modal>}</div>;
 }
 
 function ManagementGroup({ refresh, openHabit, reportError }: { refresh: number; openHabit: (id: number) => void; reportError: (error: unknown) => void }) {
@@ -140,15 +141,16 @@ function ManagementGroup({ refresh, openHabit, reportError }: { refresh: number;
   </div>;
 }
 
-function HabitHistory({ habit, reportError, onDataChange }: { habit: HabitDetail; reportError: (error: unknown) => void; onDataChange: () => void }) {
-  const [periods, setPeriods] = useState<ArchivePeriod[]>([]); const [selected, setSelected] = useState<ArchivePeriod | null>(null); const [editing, setEditing] = useState<HabitNote | null>(null);
+function HabitHistory({ habit, reportError, openNote }: { habit: HabitDetail; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void }) {
+  const [periods, setPeriods] = useState<ArchivePeriod[]>([]); const [selected, setSelected] = useState<ArchivePeriod | null>(null);
   const load = useCallback(() => api.archivePeriods(habit.id).then(items => { setPeriods(items); if (selected) setSelected(items.find(item => item.id === selected.id) ?? null); }).catch(reportError), [habit.id, reportError, selected]);
   useEffect(() => { void api.archivePeriods(habit.id).then(setPeriods).catch(reportError); }, [habit.id, reportError]);
-  if (selected) return <section className="habit-subpage"><button className="back-link" onClick={() => setSelected(null)}><ChevronLeft />History</button><h2>Active period {selected.number}</h2><p className="detail-range">{prettyDate(selected.startDate)} – {prettyDate(selected.endDate)}</p><div className="stat-grid"><span>Ending streak<strong>{selected.currentStreak}</strong></span><span>Longest streak<strong>{selected.longestStreak?.length ?? 0}</strong></span><span>Notes<strong>{selected.notes.length}</strong></span></div><h3>Streak history</h3>{selected.streaks.length ? <div className="streak-list">{selected.streaks.map(streak => <div key={`${streak.startDate}-${streak.endDate}`}><strong>{streak.length} days</strong><span>{prettyDate(streak.startDate)} – {prettyDate(streak.endDate)}</span></div>)}</div> : <p className="secondary">No completed streaks in this period.</p>}<h3 className="detail-section-title">Notes</h3>{selected.notes.length ? <div className="note-history">{selected.notes.map(note => <button key={note.date} onClick={() => setEditing(note)}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <p className="secondary">No notes in this period.</p>}{editing && <NoteEditor habit={{ id: habit.id, name: habit.name }} date={editing.date} initial={editing.body} onClose={() => setEditing(null)} reportError={reportError} onSaved={async () => { setEditing(null); await load(); onDataChange(); }} />}</section>;
+  useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
+  if (selected) return <section className="habit-subpage"><button className="back-link" onClick={() => setSelected(null)}><ChevronLeft />History</button><h2>Active period {selected.number}</h2><p className="detail-range">{prettyDate(selected.startDate)} – {prettyDate(selected.endDate)}</p><div className="stat-grid"><span>Ending streak<strong>{selected.currentStreak}</strong></span><span>Longest streak<strong>{selected.longestStreak?.length ?? 0}</strong></span><span>Notes<strong>{selected.notes.length}</strong></span></div><h3>Streak history</h3>{selected.streaks.length ? <div className="streak-list">{selected.streaks.map(streak => <div key={`${streak.startDate}-${streak.endDate}`}><strong>{streak.length} days</strong><span>{prettyDate(streak.startDate)} – {prettyDate(streak.endDate)}</span></div>)}</div> : <p className="secondary">No completed streaks in this period.</p>}<h3 className="detail-section-title">Notes</h3>{selected.notes.length ? <div className="note-history">{selected.notes.map(note => <button key={note.date} onClick={() => openNote({ habitId: habit.id, habitName: habit.name, date: note.date, create: false, archived: true })}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <p className="secondary">No notes in this period.</p>}</section>;
   return <section className="habit-subpage"><h2>History</h2>{periods.length ? <div className="inset-list">{[...periods].reverse().map(period => <button className="list-row" key={period.id} onClick={() => setSelected(period)}><span><strong>Active period {period.number}</strong><small>{prettyDate(period.startDate)} – {prettyDate(period.endDate)}</small></span><ChevronRight /></button>)}</div> : <p className="secondary">No archive history yet.</p>}</section>;
 }
 
-function HabitDetailView({ habitId, onClose, onChanged, onDeleted, reportError }: { habitId: number; onClose: () => void; onChanged: () => void; onDeleted: () => void; reportError: (error: unknown) => void }) {
+function HabitDetailView({ habitId, onClose, onChanged, onDeleted, reportError, openNote }: { habitId: number; onClose: () => void; onChanged: () => void; onDeleted: () => void; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void }) {
   const [habit, setHabit] = useState<HabitDetail | null>(null); const [editing, setEditing] = useState(false); const [name, setName] = useState(""); const [menu, setMenu] = useState(false); const [action, setAction] = useState<"archive" | "restore" | "delete" | null>(null); const [confirmation, setConfirmation] = useState(""); const [working, setWorking] = useState(false); const [history, setHistory] = useState(false);
   useEffect(() => { void api.habitDetail(habitId).then(value => { setHabit(value); setName(value.name); }).catch(reportError); }, [habitId, reportError]);
   useEffect(() => { const closeMenu = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(false); }; window.addEventListener("keydown", closeMenu); return () => window.removeEventListener("keydown", closeMenu); }, []);
@@ -160,7 +162,7 @@ function HabitDetailView({ habitId, onClose, onChanged, onDeleted, reportError }
     if (action === "delete") { await api.deleteHabit(habit.id, confirmation); onChanged(); onDeleted(); return; }
     setAction(null); setConfirmation("");
   } catch (error) { reportError(error); } finally { setWorking(false); } };
-  return <div className="habit-detail-view"><header className="habit-detail-bar">{editing ? <><button className="bar-text-button" onClick={() => { setName(habit.name); setEditing(false); }}>Cancel</button><button className="bar-text-button save" disabled={!name.trim() || working} onClick={() => void rename()}>Save</button></> : <><button className="round-bar-button" onClick={onClose} aria-label="Close habit details"><X /></button><div className="detail-actions"><button onClick={() => setEditing(true)} aria-label="Edit habit"><Pencil /></button><div className="menu-anchor"><button onClick={() => setMenu(value => !value)} aria-label="More habit options" aria-expanded={menu}><MoreHorizontal /></button>{menu && <><button className="menu-scrim" aria-label="Close menu" onClick={() => setMenu(false)} /><div className="habit-menu" role="menu">{habit.archived ? <button role="menuitem" onClick={() => { setAction("restore"); setConfirmation(""); setMenu(false); }}>Restore</button> : <button role="menuitem" onClick={() => { setAction("archive"); setMenu(false); }}>Archive</button>}<button className="destructive-text" role="menuitem" onClick={() => { setAction("delete"); setConfirmation(""); setMenu(false); }}>Delete</button></div></>}</div></div></>}</header><main className="habit-detail-content">{editing ? <label className="detail-title-editor">Habit name<input autoFocus maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label> : <h1>{habit.name}</h1>}{habit.archived && <span className="archive-badge detail-badge">Archived</span>}<div className="detail-facts"><div><span>Original start date</span><strong>{prettyDate(habit.startDate)}</strong></div>{habit.archived && habit.latestActiveRange && <div><span>Most recent active range</span><strong>{prettyDate(habit.latestActiveRange.startDate)} – {prettyDate(habit.latestActiveRange.endDate)}</strong></div>}</div><div className="stat-grid"><span>{habit.archived ? "Ending streak" : "Current streak"}<strong>{habit.currentStreak}</strong></span><span>Longest streak<strong>{habit.longestStreak?.length ?? 0}</strong></span><span>Notes<strong>{habit.noteCount}</strong></span></div><button className="history-link" onClick={() => setHistory(value => !value)}>{history ? "Hide history" : "History"}<ChevronRight /></button>{history && (habit.archived ? <HabitHistory habit={habit} reportError={reportError} onDataChange={onChanged} /> : <section className="habit-subpage"><h2>Streak history</h2>{habit.streaks.length ? <div className="streak-list">{habit.streaks.map(streak => <div key={`${streak.startDate}-${streak.endDate}`}><strong>{streak.length} days</strong><span>{prettyDate(streak.startDate)} – {prettyDate(streak.endDate)}</span></div>)}</div> : <p className="secondary">No completed streaks yet.</p>}</section>)}</main>
+  return <div className="habit-detail-view"><header className="habit-detail-bar">{editing ? <><button className="bar-text-button" onClick={() => { setName(habit.name); setEditing(false); }}>Cancel</button><button className="bar-text-button save" disabled={!name.trim() || working} onClick={() => void rename()}>Save</button></> : <><button className="round-bar-button" onClick={onClose} aria-label="Close habit details"><X /></button><div className="detail-actions"><button onClick={() => setEditing(true)} aria-label="Edit habit"><Pencil /></button><div className="menu-anchor"><button onClick={() => setMenu(value => !value)} aria-label="More habit options" aria-expanded={menu}><MoreHorizontal /></button>{menu && <><button className="menu-scrim" aria-label="Close menu" onClick={() => setMenu(false)} /><div className="habit-menu" role="menu">{habit.archived ? <button role="menuitem" onClick={() => { setAction("restore"); setConfirmation(""); setMenu(false); }}>Restore</button> : <button role="menuitem" onClick={() => { setAction("archive"); setMenu(false); }}>Archive</button>}<button className="destructive-text" role="menuitem" onClick={() => { setAction("delete"); setConfirmation(""); setMenu(false); }}>Delete</button></div></>}</div></div></>}</header><main className="habit-detail-content">{editing ? <label className="detail-title-editor">Habit name<input autoFocus maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label> : <h1>{habit.name}</h1>}{habit.archived && <span className="archive-badge detail-badge">Archived</span>}<div className="detail-facts"><div><span>Original start date</span><strong>{prettyDate(habit.startDate)}</strong></div>{habit.archived && habit.latestActiveRange && <div><span>Most recent active range</span><strong>{prettyDate(habit.latestActiveRange.startDate)} – {prettyDate(habit.latestActiveRange.endDate)}</strong></div>}</div><div className="stat-grid"><span>{habit.archived ? "Ending streak" : "Current streak"}<strong>{habit.currentStreak}</strong></span><span>Longest streak<strong>{habit.longestStreak?.length ?? 0}</strong></span><span>Notes<strong>{habit.noteCount}</strong></span></div><button className="history-link" onClick={() => setHistory(value => !value)}>{history ? "Hide history" : "History"}<ChevronRight /></button>{history && (habit.archived ? <HabitHistory habit={habit} reportError={reportError} openNote={openNote} /> : <section className="habit-subpage"><h2>Streak history</h2>{habit.streaks.length ? <div className="streak-list">{habit.streaks.map(streak => <div key={`${streak.startDate}-${streak.endDate}`}><strong>{streak.length} days</strong><span>{prettyDate(streak.startDate)} – {prettyDate(streak.endDate)}</span></div>)}</div> : <p className="secondary">No completed streaks yet.</p>}</section>)}</main>
     {action && <Modal title={action === "archive" ? "Archive habit" : action === "restore" ? "Restore habit" : "Delete habit"} onClose={() => { setAction(null); setConfirmation(""); }}><div className="confirmation-panel">{action === "archive" ? <p>This habit will disappear from active management and from daily tracking after today. Its history and notes will remain.</p> : action === "restore" ? <p>This habit will return to daily tracking starting today. Dates between archive and restoration remain inactive and will not be backfilled.</p> : <><p>This permanently deletes the habit, daily statuses, notes, challenges, and archive history. A safety backup is created immediately before deletion.</p><label>Type <strong>DELETE</strong> to continue<input value={confirmation} onChange={event => setConfirmation(event.target.value)} autoCapitalize="characters" autoFocus /></label></>}<button className={action === "delete" ? "danger-button" : "form-submit"} disabled={working || (action === "delete" && confirmation !== "DELETE")} onClick={() => void runAction()}>{working ? "Working…" : action === "archive" ? "Archive habit" : action === "restore" ? "Restore habit" : "Delete permanently"}</button></div></Modal>}
   </div>;
 }
@@ -212,27 +214,31 @@ const tabs: { id: Tab; label: string; Icon: typeof Check }[] = [
 
 export default function App() {
   const initialHabit = window.location.pathname.match(/^\/habits\/(\d+)$/)?.[1];
-  const [config, setConfig] = useState<Config | null>(null); const [tab, setTab] = useState<Tab>("today"); const [selectedDate, setSelectedDate] = useState(""); const [refresh, setRefresh] = useState(0); const [notificationCount, setNotificationCount] = useState(0); const [error, setError] = useState(""); const [detailHabitId, setDetailHabitId] = useState<number | null>(initialHabit ? Number(initialHabit) : null);
+  const initialNote = window.location.pathname.match(/^\/habits\/(\d+)\/notes\/(\d{4}-\d{2}-\d{2})$/);
+  const [config, setConfig] = useState<Config | null>(null); const [tab, setTab] = useState<Tab>("today"); const [selectedDate, setSelectedDate] = useState(""); const [refresh, setRefresh] = useState(0); const [notificationCount, setNotificationCount] = useState(0); const [error, setError] = useState(""); const [detailHabitId, setDetailHabitId] = useState<number | null>(initialHabit ? Number(initialHabit) : null); const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(initialNote ? { habitId: Number(initialNote[1]), habitName: "", date: initialNote[2], create: false } : null);
   const reportError = useCallback((value: unknown) => setError(value instanceof ApiError || value instanceof Error ? value.message : "Something went wrong."), []);
   const refreshAll = useCallback(() => { setRefresh(value => value + 1); void Promise.all([api.unresolved(), api.systemNotifications()]).then(([items, system]) => setNotificationCount(items.length + system.length)).catch(reportError); }, [reportError]);
   useEffect(() => { void api.config().then(value => { setConfig(value); setSelectedDate(value.today); }).catch(reportError); }, [reportError]);
   useEffect(() => { if (config) refreshAll(); }, [config, refreshAll]);
   useEffect(() => { if (!config) return; const timer = window.setInterval(() => { void Promise.all([api.unresolved(), api.systemNotifications()]).then(([items, system]) => setNotificationCount(items.length + system.length)).catch(reportError); }, 60_000); return () => window.clearInterval(timer); }, [config, reportError]);
-  useEffect(() => { const handlePop = () => { const match = window.location.pathname.match(/^\/habits\/(\d+)$/); setDetailHabitId(match ? Number(match[1]) : null); }; window.addEventListener("popstate", handlePop); return () => window.removeEventListener("popstate", handlePop); }, []);
+  useEffect(() => { const handlePop = () => { const habitMatch = window.location.pathname.match(/^\/habits\/(\d+)$/); const noteMatch = window.location.pathname.match(/^\/habits\/(\d+)\/notes\/(\d{4}-\d{2}-\d{2})$/); setDetailHabitId(habitMatch ? Number(habitMatch[1]) : null); setNoteTarget(noteMatch ? (window.history.state?.noteTarget ?? { habitId: Number(noteMatch[1]), habitName: "", date: noteMatch[2], create: false }) : null); }; window.addEventListener("popstate", handlePop); return () => window.removeEventListener("popstate", handlePop); }, []);
   if (!config || !selectedDate) return <main className="startup"><img src="/app-icon.png" alt="" /><h1>Habit Tracker</h1><p>{error || "Opening your habits…"}</p></main>;
   const openDate = (date: string) => { setSelectedDate(date); setTab("today"); };
   const openHabit = (id: number) => { window.history.pushState({ habitId: id }, "", `/habits/${id}`); setDetailHabitId(id); };
   const closeHabit = () => { if (window.history.state?.habitId) window.history.back(); else { window.history.replaceState(null, "", "/"); setDetailHabitId(null); } };
+  const openNote = (target: NoteTarget) => { window.history.pushState({ noteTarget: target }, "", `/habits/${target.habitId}/notes/${target.date}`); setNoteTarget(target); };
+  const closeNote = () => { if (window.history.state?.noteTarget) window.history.back(); else { window.history.replaceState(null, "", "/"); setNoteTarget(null); } };
   return <div className="app-shell">
     <main className="content">
-      {tab === "today" && <TodayPage config={config} selectedDate={selectedDate} onDate={setSelectedDate} onDataChange={refreshAll} reportError={reportError} openHabit={openHabit} />}
+      {tab === "today" && <TodayPage config={config} selectedDate={selectedDate} onDate={setSelectedDate} onDataChange={refreshAll} reportError={reportError} openHabit={openHabit} openNote={openNote} />}
       {tab === "stats" && <StatsPage refresh={refresh} reportError={reportError} />}
-      {tab === "notes" && <NotesPage refresh={refresh} reportError={reportError} onDataChange={refreshAll} />}
+      {tab === "notes" && <NotesPage refresh={refresh} reportError={reportError} openNote={openNote} noteOpen={noteTarget !== null} />}
       {tab === "notifications" && <NotificationsPage refresh={refresh} reportError={reportError} openDate={openDate} onDataChange={refreshAll} />}
       {tab === "more" && <MorePage config={config} refresh={refresh} openHabit={openHabit} reportError={reportError} imported={() => { void api.config().then(value => { setConfig(value); setSelectedDate(value.today); refreshAll(); }); }} />}
     </main>
     <nav className="tab-bar" aria-label="Main navigation">{tabs.map(({ id, label, Icon }) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)} aria-label={id === "notifications" && notificationCount > 0 ? `${label}, ${notificationCount} unresolved dates` : label} aria-current={tab === id ? "page" : undefined}><span className="tab-icon"><Icon />{id === "notifications" && notificationCount > 0 ? <i aria-hidden="true">{notificationCount}</i> : null}</span></button>)}</nav>
     {error && <div className="error-alert" role="alert"><span>{error}</span><button onClick={() => setError("")} aria-label="Dismiss error"><X /></button></div>}
-    {detailHabitId !== null && <HabitDetailView habitId={detailHabitId} onClose={closeHabit} onChanged={refreshAll} onDeleted={closeHabit} reportError={reportError} />}
+    {detailHabitId !== null && <HabitDetailView habitId={detailHabitId} onClose={closeHabit} onChanged={refreshAll} onDeleted={closeHabit} reportError={reportError} openNote={openNote} />}
+    {noteTarget && <NoteDetailView target={noteTarget} onClose={closeNote} onChanged={refreshAll} reportError={reportError} />}
   </div>;
 }

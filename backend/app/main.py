@@ -117,8 +117,8 @@ def update_status(habit_id: int, day: str, payload: StatusUpdate) -> None:
 
 
 @app.get("/api/habits/{habit_id}/days/{day}/note")
-def get_note(habit_id: int, day: str) -> dict[str, str]:
-    return {"body": database.note(habit_id, day)}
+def get_note(habit_id: int, day: str) -> dict:
+    return database.note_detail(habit_id, day)
 
 
 @app.put("/api/habits/{habit_id}/days/{day}/note", status_code=204)

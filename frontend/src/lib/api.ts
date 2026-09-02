@@ -1,4 +1,4 @@
-import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteSummary, Statistic, Status, SystemNotification, Unresolved } from "./types";
+import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -41,7 +41,7 @@ export const api = {
   deleteHabit: (id: number, confirmation: string) => request<{ status: string; backup: string }>(`/api/habits/${id}`, json("DELETE", { confirmation })),
   archivePeriods: (id: number) => request<ArchivePeriod[]>(`/api/habits/${id}/archive-periods`),
   setStatus: (id: number, day: string, status: Status) => request<void>(`/api/habits/${id}/days/${day}/status`, json("PUT", { status })),
-  note: (id: number, day: string) => request<{ body: string }>(`/api/habits/${id}/days/${day}/note`),
+  note: (id: number, day: string) => request<NoteDetail>(`/api/habits/${id}/days/${day}/note`),
   saveNote: (id: number, day: string, body: string) => request<void>(`/api/habits/${id}/days/${day}/note`, json("PUT", { body })),
   month: (month: string) => request<MonthDay[]>(`/api/months/${month}`),
   statistics: () => request<Statistic[]>("/api/statistics"),

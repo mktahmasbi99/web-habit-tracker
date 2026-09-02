@@ -473,6 +473,24 @@ class HabitDatabase:
                         (habit_id, day, status),
                     )
 
+    def note_detail(self, habit_id: int, day_value: str) -> dict:
+        day = self.parse_day(day_value).isoformat()
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT h.name, h.archived_at, n.body
+                   FROM habits h LEFT JOIN habit_notes n
+                     ON n.habit_id = h.id AND n.note_date = ?
+                   WHERE h.id = ?""",
+                (day, habit_id),
+            ).fetchone()
+        if row is None:
+            raise DomainError("Habit not found.")
+        return {
+            "habitId": habit_id, "habitName": row["name"], "date": day,
+            "body": row["body"] or "", "exists": row["body"] is not None,
+            "archived": row["archived_at"] is not None,
+        }
+
     def note(self, habit_id: int, day_value: str) -> str:
         day = self.parse_day(day_value).isoformat()
         with self.connect() as connection:

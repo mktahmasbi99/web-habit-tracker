@@ -28,6 +28,7 @@ export interface NoteSummary {
   id: number; name: string; startDate: string; archived: boolean; noteCount: number;
 }
 export interface HabitNote { habitId: number; habitName: string; date: string; body: string }
+export interface NoteDetail extends HabitNote { exists: boolean; archived: boolean }
 export type BackupCategory = "daily" | "weekly" | "on-demand" | "pre-import" | "pre-restore" | "pre-delete";
 export interface BackupFile {
   filename: string; category: BackupCategory; createdAt: string; size: number; safety: boolean;

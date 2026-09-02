@@ -7,9 +7,15 @@ const ok = (value: unknown, status = 200) => Promise.resolve(new Response(
   status === 204 ? null : JSON.stringify(value),
   { status, headers: { "Content-Type": "application/json" } },
 ));
+let noteResponse: unknown;
+let noteSummaries: unknown[];
+let habitNotes: unknown[];
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
+    noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "", exists: false, archived: false };
+    noteSummaries = [];
+    habitNotes = [];
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = String(input);
@@ -22,9 +28,11 @@ describe("Habit Tracker", () => {
       if (url === "/api/habits/1") return ok({ id: 1, name: "Read", startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] });
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
-      if (url.includes("/api/days/")) return ok([{ id: 1, name: "Read", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: false }]);
+      if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
+      if (url.includes("/api/days/")) return ok([{ id: 1, name: "Read", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/statistics") return ok([]);
-      if (url === "/api/notes") return ok([]);
+      if (url === "/api/notes") return ok(noteSummaries);
+      if (url === "/api/habits/1/notes") return ok(habitNotes);
       return ok({}, 204);
     }));
   });
@@ -60,7 +68,7 @@ describe("Habit Tracker", () => {
   it("saves an open note with Ctrl+Enter", async () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Read" });
-    await user.click(screen.getByRole("button", { name: "Add note for Read" }));
+    await user.click(screen.getByRole("button", { name: /note for Read/ }));
     const note = await screen.findByRole("textbox", { name: "Note" });
     await user.type(note, "Finished a chapter");
     await user.keyboard("{Control>}{Enter}{/Control}");
@@ -68,6 +76,52 @@ describe("Habit Tracker", () => {
       "/api/habits/1/days/2026-08-26/note",
       expect.objectContaining({ method: "PUT", body: JSON.stringify({ body: "Finished a chapter" }) }),
     ));
+  });
+
+  it("opens an existing note read-only, cancels edits, and confirms deletion without typed text", async () => {
+    noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "Original note", exists: true, archived: false };
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Read" });
+    await user.click(screen.getByRole("button", { name: "View note for Read" }));
+    expect(await screen.findByText("Original note")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Note" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit note" }));
+    const editor = screen.getByRole("textbox", { name: "Note" });
+    await user.clear(editor); await user.type(editor, "Changed");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("Original note")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "More note options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    expect(screen.getByText("Delete this note?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      "/api/habits/1/days/2026-08-26/note",
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ body: "" }) }),
+    ));
+  });
+
+  it("shows a clear missing-note state for a stale direct URL", async () => {
+    window.history.replaceState(null, "", "/habits/1/notes/2026-08-26");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Note not found" })).toBeInTheDocument();
+    expect(screen.getByText(/deleted or removed by a database restore/)).toBeInTheDocument();
+  });
+
+  it("replaces the note-history mask with the selected note and restores it on close", async () => {
+    noteSummaries = [{ id: 1, name: "Read", startDate: "2026-08-26", archived: false, noteCount: 1 }];
+    habitNotes = [{ habitId: 1, habitName: "Read", date: "2026-08-26", body: "Finished a chapter" }];
+    noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "Finished a chapter", exists: true, archived: false };
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "Notes" }));
+    await user.click(await screen.findByRole("button", { name: /Read/ }));
+    expect(screen.getByRole("dialog", { name: "Read" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /Finished a chapter/ }));
+    expect(await screen.findByText("Finished a chapter")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Read" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Note" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close note" }));
+    expect(await screen.findByRole("dialog", { name: "Read" })).toBeInTheDocument();
   });
 
   it("places database import in the collapsed Backup and restore advanced section", async () => {

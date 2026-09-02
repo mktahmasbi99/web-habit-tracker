@@ -76,3 +76,19 @@ def test_api_habit_management_workflow(monkeypatch, tmp_path):
         deleted = client.request("DELETE", f"/api/habits/{habit_id}", json={"confirmation": "DELETE"})
         assert deleted.status_code == 200
         assert deleted.json()["backup"].startswith("pre-delete-")
+
+
+def test_api_note_detail_distinguishes_missing_and_existing_notes(monkeypatch, tmp_path):
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "notes.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        today = client.get("/api/config").json()["today"]
+        habit_id = client.post("/api/habits", json={"name": "Read", "startDate": today}).json()["id"]
+        missing = client.get(f"/api/habits/{habit_id}/days/{today}/note").json()
+        assert missing == {"habitId": habit_id, "habitName": "Read", "date": today, "body": "", "exists": False, "archived": False}
+        assert client.put(f"/api/habits/{habit_id}/days/{today}/note", json={"body": "A chapter"}).status_code == 204
+        existing = client.get(f"/api/habits/{habit_id}/days/{today}/note").json()
+        assert existing["body"] == "A chapter"
+        assert existing["exists"] is True
