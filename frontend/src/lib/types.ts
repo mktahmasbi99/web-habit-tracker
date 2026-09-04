@@ -5,6 +5,18 @@ export interface HabitDay {
   id: number; name: string; startDate: string; status: Status;
   currentStreak: number; hasNote: boolean;
 }
+export interface TimedActivityDay {
+  id: number; name: string; startDate: string; dayMinutes: number; weekMinutes: number; hasNote: boolean; archived: boolean;
+}
+export interface TimedEntry { id: number; minutes: number }
+export interface TimedWeekDay { date: string; minutes: number; entries: TimedEntry[]; active: boolean }
+export interface TimedActivityWeek {
+  id: number; name: string; startDate: string; selectedDate: string; days: TimedWeekDay[]; note: string;
+}
+export interface TimedActivitySummary {
+  id: number; name: string; startDate: string; archived: boolean; archivedAt: string | null; noteCount: number;
+}
+export interface TimedActivityNote { activityId: number; activityName: string; date: string; body: string }
 export interface Streak { startDate: string; endDate: string; length: number }
 export interface ActiveRange { startDate: string; endDate: string }
 export interface HabitSummary {

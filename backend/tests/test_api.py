@@ -1,4 +1,5 @@
 import importlib
+from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
@@ -92,3 +93,68 @@ def test_api_note_detail_distinguishes_missing_and_existing_notes(monkeypatch, t
         existing = client.get(f"/api/habits/{habit_id}/days/{today}/note").json()
         assert existing["body"] == "A chapter"
         assert existing["exists"] is True
+
+
+def test_timed_activity_sessions_week_totals_notes_and_limits(monkeypatch, tmp_path):
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "timed.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        today = date.fromisoformat(client.get("/api/config").json()["today"])
+        monday = today - timedelta(days=today.weekday())
+        activity_id = client.post(
+            "/api/timed-activities", json={"name": "Study", "startDate": monday.isoformat()}
+        ).json()["id"]
+        assert client.post(
+            f"/api/timed-activities/{activity_id}/days/{monday.isoformat()}/entries",
+            json={"minutes": 45},
+        ).status_code == 201
+        entry = client.post(
+            f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/entries",
+            json={"minutes": 80},
+        ).json()
+        summary = client.get(f"/api/days/{today.isoformat()}/timed-activities").json()[0]
+        assert summary["dayMinutes"] == 80
+        assert summary["weekMinutes"] == 125
+        assert client.patch(
+            f"/api/timed-activities/{activity_id}/entries/{entry['id']}", json={"minutes": 120}
+        ).json()["minutes"] == 120
+        assert client.put(
+            f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/note",
+            json={"body": "Chapter four"},
+        ).status_code == 204
+        note_detail = client.get(
+            f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/note"
+        ).json()
+        assert note_detail["exists"] is True
+        assert note_detail["body"] == "Chapter four"
+        week = client.get(f"/api/timed-activities/{activity_id}/weeks/{today.isoformat()}").json()
+        assert week["note"] == "Chapter four"
+        assert next(item for item in week["days"] if item["date"] == today.isoformat())["minutes"] == 120
+        assert client.post(
+            f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/entries",
+            json={"minutes": 1321},
+        ).status_code == 400
+        future = (today + timedelta(days=1)).isoformat()
+        assert client.post(
+            f"/api/timed-activities/{activity_id}/days/{future}/entries", json={"minutes": 1}
+        ).status_code == 400
+        assert client.delete(
+            f"/api/timed-activities/{activity_id}/entries/{entry['id']}"
+        ).status_code == 204
+        summaries = client.get("/api/timed-activities").json()
+        assert summaries[0]["name"] == "Study"
+        assert summaries[0]["noteCount"] == 1
+        assert client.patch(
+            f"/api/timed-activities/{activity_id}", json={"name": "Deep study"}
+        ).json()["name"] == "Deep study"
+        assert client.post(f"/api/timed-activities/{activity_id}/archive").json()["archived"] is True
+        assert client.post(f"/api/timed-activities/{activity_id}/restore").json()["archived"] is False
+        notes = client.get(f"/api/timed-activities/{activity_id}/notes").json()
+        assert notes[0]["body"] == "Chapter four"
+        deleted = client.request(
+            "DELETE", f"/api/timed-activities/{activity_id}", json={"confirmation": "DELETE"}
+        )
+        assert deleted.status_code == 200
+        assert deleted.json()["backup"].startswith("pre-delete-")

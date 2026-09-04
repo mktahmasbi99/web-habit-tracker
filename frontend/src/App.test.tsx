@@ -29,6 +29,8 @@ describe("Habit Tracker", () => {
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
+      if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
+      if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok([]);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: "Read", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/statistics") return ok([]);
       if (url === "/api/notes") return ok(noteSummaries);
@@ -155,9 +157,9 @@ describe("Habit Tracker", () => {
   it("preserves the archived disclosure while a habit detail opens and closes", async () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
-    await user.click(screen.getByRole("button", { name: "More" }));
-    const active = await screen.findByRole("button", { name: "Active habits" });
-    const archived = screen.getByRole("button", { name: "Archived habits" });
+    await user.click(screen.getByRole("button", { name: "Manage" }));
+    const active = await screen.findByRole("button", { name: "Active" });
+    const archived = screen.getByRole("button", { name: "Archived" });
     expect(active).toHaveAttribute("aria-expanded", "true");
     expect(archived).toHaveAttribute("aria-expanded", "false");
     await user.click(archived);

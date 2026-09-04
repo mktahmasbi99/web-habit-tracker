@@ -153,6 +153,41 @@ class HabitDatabase:
                     created_at TEXT NOT NULL,
                     category TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS timed_activities (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    start_date TEXT NOT NULL,
+                    archived_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS timed_activity_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    activity_id INTEGER NOT NULL,
+                    entry_date TEXT NOT NULL,
+                    minutes INTEGER NOT NULL CHECK (minutes BETWEEN 1 AND 1440),
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (activity_id) REFERENCES timed_activities(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS timed_activity_notes (
+                    activity_id INTEGER NOT NULL,
+                    note_date TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (activity_id, note_date),
+                    FOREIGN KEY (activity_id) REFERENCES timed_activities(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS timed_activity_archive_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    activity_id INTEGER NOT NULL,
+                    archived_at TEXT NOT NULL,
+                    resurrected_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (activity_id) REFERENCES timed_activities(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_timed_entries_activity_date
+                    ON timed_activity_entries(activity_id, entry_date);
+                CREATE INDEX IF NOT EXISTS idx_timed_notes_date ON timed_activity_notes(note_date);
                 """
             )
             habit_columns = {
@@ -170,6 +205,9 @@ class HabitDatabase:
                                   VALUES (1)""")
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (2)"
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (3)"
             )
             connection.execute("PRAGMA optimize")
             connection.commit()
@@ -245,6 +283,278 @@ class HabitDatabase:
                 )
                 current += timedelta(days=1)
         return {"id": habit_id, "name": cleaned, "startDate": start.isoformat()}
+
+    def _timed_row(self, connection: sqlite3.Connection, activity_id: int) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT id, name, start_date, archived_at FROM timed_activities WHERE id = ?",
+            (activity_id,),
+        ).fetchone()
+        if row is None:
+            raise DomainError("Timed activity not found.")
+        return row
+
+    def _timed_active(self, connection: sqlite3.Connection, activity_id: int, day: str) -> bool:
+        row = connection.execute(
+            """SELECT EXISTS(SELECT 1 FROM timed_activities a
+               WHERE a.id = ? AND a.start_date <= ? AND NOT EXISTS (
+                 SELECT 1 FROM timed_activity_archive_periods p
+                 WHERE p.activity_id = a.id AND p.archived_at < ?
+                   AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)
+               ))""",
+            (activity_id, day, day, day),
+        ).fetchone()
+        return bool(row[0])
+
+    def create_timed_activity(self, name: str, start_date: str) -> dict:
+        cleaned = self._clean_name(name)
+        start = self.parse_day(start_date)
+        with self.connect() as connection, connection:
+            cursor = connection.execute(
+                "INSERT INTO timed_activities(name, start_date) VALUES (?, ?)",
+                (cleaned, start.isoformat()),
+            )
+        return {"id": cursor.lastrowid, "name": cleaned, "startDate": start.isoformat()}
+
+    def timed_activity_summaries(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT a.id, a.name, a.start_date, a.archived_at,
+                          COUNT(n.activity_id) note_count
+                   FROM timed_activities a
+                   LEFT JOIN timed_activity_notes n ON n.activity_id = a.id
+                   GROUP BY a.id, a.name, a.start_date, a.archived_at
+                   ORDER BY a.start_date, a.name, a.id"""
+            ).fetchall()
+        return [{
+            "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+            "archived": row["archived_at"] is not None, "archivedAt": row["archived_at"],
+            "noteCount": row["note_count"],
+        } for row in rows]
+
+    def timed_activity_detail(self, activity_id: int) -> dict:
+        item = next((row for row in self.timed_activity_summaries() if row["id"] == activity_id), None)
+        if item is None:
+            raise DomainError("Timed activity not found.")
+        return item
+
+    def rename_timed_activity(self, activity_id: int, name: str) -> dict:
+        cleaned = self._clean_name(name)
+        with self.connect() as connection, connection:
+            self._timed_row(connection, activity_id)
+            connection.execute("UPDATE timed_activities SET name = ? WHERE id = ?", (cleaned, activity_id))
+        return self.timed_activity_detail(activity_id)
+
+    def archive_timed_activity(self, activity_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            activity = self._timed_row(connection, activity_id)
+            if activity["archived_at"] is not None:
+                raise DomainError("Timed activity is already archived.")
+            if today < activity["start_date"]:
+                raise DomainError("A timed activity cannot be archived before its start date.")
+            connection.execute("UPDATE timed_activities SET archived_at = ? WHERE id = ?", (today, activity_id))
+            connection.execute(
+                "INSERT INTO timed_activity_archive_periods(activity_id, archived_at) VALUES (?, ?)",
+                (activity_id, today),
+            )
+        return self.timed_activity_detail(activity_id)
+
+    def restore_timed_activity(self, activity_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            activity = self._timed_row(connection, activity_id)
+            if activity["archived_at"] is None:
+                raise DomainError("Timed activity is already active.")
+            connection.execute("UPDATE timed_activities SET archived_at = NULL WHERE id = ?", (activity_id,))
+            cursor = connection.execute(
+                """UPDATE timed_activity_archive_periods SET resurrected_at = ?
+                   WHERE id = (SELECT id FROM timed_activity_archive_periods
+                               WHERE activity_id = ? AND resurrected_at IS NULL
+                               ORDER BY archived_at DESC, id DESC LIMIT 1)""",
+                (today, activity_id),
+            )
+            if cursor.rowcount != 1:
+                raise DomainError("The timed activity's archive history is incomplete.")
+        return self.timed_activity_detail(activity_id)
+
+    def delete_timed_activity(self, activity_id: int, confirmation: str) -> str:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to permanently delete this timed activity.")
+        with self._replacement_lock:
+            with self.connect() as connection:
+                self._timed_row(connection, activity_id)
+            safety = self.create_backup("pre-delete")
+            with self.connect() as connection, connection:
+                cursor = connection.execute("DELETE FROM timed_activities WHERE id = ?", (activity_id,))
+                if cursor.rowcount != 1:
+                    raise DomainError("Timed activity not found.")
+        return safety.name
+
+    def timed_note_summaries(self) -> list[dict]:
+        return self.timed_activity_summaries()
+
+    def timed_notes_for(self, activity_id: int) -> list[dict]:
+        with self.connect() as connection:
+            self._timed_row(connection, activity_id)
+            rows = connection.execute(
+                """SELECT n.activity_id, a.name, n.note_date, n.body
+                   FROM timed_activity_notes n JOIN timed_activities a ON a.id = n.activity_id
+                   WHERE n.activity_id = ? ORDER BY n.note_date DESC""",
+                (activity_id,),
+            ).fetchall()
+        return [{"activityId": row["activity_id"], "activityName": row["name"], "date": row["note_date"], "body": row["body"]} for row in rows]
+
+    @staticmethod
+    def _week_start(day: date) -> date:
+        return day - timedelta(days=day.weekday())
+
+    def timed_activities_on(self, day_value: str) -> list[dict]:
+        selected = self.parse_day(day_value)
+        day = selected.isoformat()
+        monday = self._week_start(selected).isoformat()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT a.id, a.name, a.start_date, a.archived_at,
+                          COALESCE(SUM(CASE WHEN e.entry_date = ? THEN e.minutes ELSE 0 END), 0) day_minutes,
+                          COALESCE(SUM(CASE WHEN e.entry_date BETWEEN ? AND ? THEN e.minutes ELSE 0 END), 0) week_minutes,
+                          EXISTS(SELECT 1 FROM timed_activity_notes n
+                                 WHERE n.activity_id = a.id AND n.note_date = ?) has_note
+                   FROM timed_activities a
+                   LEFT JOIN timed_activity_entries e ON e.activity_id = a.id
+                   WHERE a.start_date <= ? AND NOT EXISTS (
+                     SELECT 1 FROM timed_activity_archive_periods p
+                     WHERE p.activity_id = a.id AND p.archived_at < ?
+                       AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)
+                   )
+                   GROUP BY a.id, a.name, a.start_date
+                   ORDER BY a.start_date, a.name, a.id""",
+                (day, monday, day, day, day, day, day),
+            ).fetchall()
+        return [{
+            "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+            "dayMinutes": row["day_minutes"], "weekMinutes": row["week_minutes"],
+            "hasNote": bool(row["has_note"]), "archived": row["archived_at"] is not None,
+        } for row in rows]
+
+    def timed_activity_week(self, activity_id: int, day_value: str) -> dict:
+        selected = self.parse_day(day_value)
+        monday = self._week_start(selected)
+        sunday = monday + timedelta(days=6)
+        with self.connect() as connection:
+            activity = self._timed_row(connection, activity_id)
+            rows = connection.execute(
+                """SELECT id, entry_date, minutes FROM timed_activity_entries
+                   WHERE activity_id = ? AND entry_date BETWEEN ? AND ?
+                   ORDER BY entry_date, id""",
+                (activity_id, monday.isoformat(), sunday.isoformat()),
+            ).fetchall()
+            note = connection.execute(
+                "SELECT body FROM timed_activity_notes WHERE activity_id = ? AND note_date = ?",
+                (activity_id, selected.isoformat()),
+            ).fetchone()
+            periods = connection.execute(
+                "SELECT archived_at, resurrected_at FROM timed_activity_archive_periods WHERE activity_id = ?",
+                (activity_id,),
+            ).fetchall()
+        entries: dict[str, list[dict]] = {}
+        for row in rows:
+            entries.setdefault(row["entry_date"], []).append({"id": row["id"], "minutes": row["minutes"]})
+        days = []
+        current = monday
+        while current <= sunday:
+            current_entries = entries.get(current.isoformat(), [])
+            current_iso = current.isoformat()
+            inactive = any(period["archived_at"] < current_iso and (period["resurrected_at"] is None or period["resurrected_at"] > current_iso) for period in periods)
+            days.append({"date": current_iso, "minutes": sum(item["minutes"] for item in current_entries), "entries": current_entries, "active": activity["start_date"] <= current_iso and not inactive})
+            current += timedelta(days=1)
+        return {"id": activity_id, "name": activity["name"], "startDate": activity["start_date"], "selectedDate": selected.isoformat(), "days": days, "note": note["body"] if note else ""}
+
+    def add_timed_entry(self, activity_id: int, day_value: str, minutes: int) -> dict:
+        day = self.parse_day(day_value).isoformat()
+        if day > self.today().isoformat():
+            raise DomainError("Future dates cannot receive duration entries.")
+        if not 1 <= minutes <= 1440:
+            raise DomainError("Duration must be between 1 minute and 24 hours.")
+        with self.connect() as connection, connection:
+            if not self._timed_active(connection, activity_id, day):
+                raise DomainError("This timed activity was not active on the selected date.")
+            total = connection.execute(
+                "SELECT COALESCE(SUM(minutes), 0) FROM timed_activity_entries WHERE activity_id = ? AND entry_date = ?",
+                (activity_id, day),
+            ).fetchone()[0]
+            if total + minutes > 1440:
+                raise DomainError("A timed activity cannot exceed 24 hours in one day.")
+            cursor = connection.execute(
+                "INSERT INTO timed_activity_entries(activity_id, entry_date, minutes) VALUES (?, ?, ?)",
+                (activity_id, day, minutes),
+            )
+        return {"id": cursor.lastrowid, "minutes": minutes}
+
+    def update_timed_entry(self, activity_id: int, entry_id: int, minutes: int) -> dict:
+        if not 1 <= minutes <= 1440:
+            raise DomainError("Duration must be between 1 minute and 24 hours.")
+        with self.connect() as connection, connection:
+            row = connection.execute(
+                "SELECT entry_date, minutes FROM timed_activity_entries WHERE id = ? AND activity_id = ?",
+                (entry_id, activity_id),
+            ).fetchone()
+            if row is None:
+                raise DomainError("Duration entry not found.")
+            if not self._timed_active(connection, activity_id, row["entry_date"]):
+                raise DomainError("This timed activity was not active on the entry date.")
+            total = connection.execute(
+                "SELECT COALESCE(SUM(minutes), 0) FROM timed_activity_entries WHERE activity_id = ? AND entry_date = ?",
+                (activity_id, row["entry_date"]),
+            ).fetchone()[0]
+            if total - row["minutes"] + minutes > 1440:
+                raise DomainError("A timed activity cannot exceed 24 hours in one day.")
+            connection.execute(
+                "UPDATE timed_activity_entries SET minutes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (minutes, entry_id),
+            )
+        return {"id": entry_id, "minutes": minutes}
+
+    def delete_timed_entry(self, activity_id: int, entry_id: int) -> None:
+        with self.connect() as connection, connection:
+            cursor = connection.execute(
+                "DELETE FROM timed_activity_entries WHERE id = ? AND activity_id = ?",
+                (entry_id, activity_id),
+            )
+            if cursor.rowcount != 1:
+                raise DomainError("Duration entry not found.")
+
+    def save_timed_note(self, activity_id: int, day_value: str, body: str) -> None:
+        day = self.parse_day(day_value).isoformat()
+        if day > self.today().isoformat():
+            raise DomainError("Future dates cannot receive notes.")
+        if len(body) > 20_000:
+            raise DomainError("Notes cannot exceed 20,000 characters.")
+        with self.connect() as connection, connection:
+            if not self._timed_active(connection, activity_id, day):
+                raise DomainError("This timed activity was not active on the selected date.")
+            if body.strip():
+                connection.execute(
+                    """INSERT INTO timed_activity_notes(activity_id, note_date, body, updated_at)
+                       VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                       ON CONFLICT(activity_id, note_date) DO UPDATE SET body = excluded.body, updated_at = CURRENT_TIMESTAMP""",
+                    (activity_id, day, body),
+                )
+            else:
+                connection.execute("DELETE FROM timed_activity_notes WHERE activity_id = ? AND note_date = ?", (activity_id, day))
+
+    def timed_note_detail(self, activity_id: int, day_value: str) -> dict:
+        day = self.parse_day(day_value).isoformat()
+        with self.connect() as connection:
+            activity = self._timed_row(connection, activity_id)
+            row = connection.execute(
+                "SELECT body FROM timed_activity_notes WHERE activity_id = ? AND note_date = ?",
+                (activity_id, day),
+            ).fetchone()
+        return {
+            "habitId": activity_id, "habitName": activity["name"], "date": day,
+            "body": row["body"] if row else "", "exists": row is not None,
+            "archived": activity["archived_at"] is not None,
+        }
 
     def _active_sql(self) -> str:
         return """h.start_date <= ? AND NOT EXISTS (

@@ -21,6 +21,7 @@ from .schemas import (
     HabitRename,
     NoteUpdate,
     StatusUpdate,
+    TimedEntryUpdate,
 )
 
 settings = load_settings()
@@ -74,6 +75,86 @@ def day_habits(day: str) -> list[dict]:
 @app.post("/api/habits", status_code=201)
 def create_habit(payload: HabitCreate) -> dict:
     return database.create_habit(payload.name, payload.startDate)
+
+
+@app.get("/api/days/{day}/timed-activities")
+def day_timed_activities(day: str) -> list[dict]:
+    return database.timed_activities_on(day)
+
+
+@app.post("/api/timed-activities", status_code=201)
+def create_timed_activity(payload: HabitCreate) -> dict:
+    return database.create_timed_activity(payload.name, payload.startDate)
+
+
+@app.get("/api/timed-activities")
+def timed_activities() -> list[dict]:
+    return database.timed_activity_summaries()
+
+
+@app.get("/api/timed-activities/{activity_id}")
+def timed_activity_detail(activity_id: int) -> dict:
+    return database.timed_activity_detail(activity_id)
+
+
+@app.patch("/api/timed-activities/{activity_id}")
+def rename_timed_activity(activity_id: int, payload: HabitRename) -> dict:
+    return database.rename_timed_activity(activity_id, payload.name)
+
+
+@app.post("/api/timed-activities/{activity_id}/archive")
+def archive_timed_activity(activity_id: int) -> dict:
+    return database.archive_timed_activity(activity_id)
+
+
+@app.post("/api/timed-activities/{activity_id}/restore")
+def restore_timed_activity(activity_id: int) -> dict:
+    return database.restore_timed_activity(activity_id)
+
+
+@app.delete("/api/timed-activities/{activity_id}")
+def delete_timed_activity(activity_id: int, payload: HabitDelete) -> dict[str, str]:
+    return {"status": "deleted", "backup": database.delete_timed_activity(activity_id, payload.confirmation)}
+
+
+@app.get("/api/timed-activities/{activity_id}/weeks/{day}")
+def timed_activity_week(activity_id: int, day: str) -> dict:
+    return database.timed_activity_week(activity_id, day)
+
+
+@app.post("/api/timed-activities/{activity_id}/days/{day}/entries", status_code=201)
+def add_timed_entry(activity_id: int, day: str, payload: TimedEntryUpdate) -> dict:
+    return database.add_timed_entry(activity_id, day, payload.minutes)
+
+
+@app.patch("/api/timed-activities/{activity_id}/entries/{entry_id}")
+def update_timed_entry(activity_id: int, entry_id: int, payload: TimedEntryUpdate) -> dict:
+    return database.update_timed_entry(activity_id, entry_id, payload.minutes)
+
+
+@app.delete("/api/timed-activities/{activity_id}/entries/{entry_id}", status_code=204)
+def delete_timed_entry(activity_id: int, entry_id: int) -> None:
+    database.delete_timed_entry(activity_id, entry_id)
+
+
+@app.put("/api/timed-activities/{activity_id}/days/{day}/note", status_code=204)
+def update_timed_note(activity_id: int, day: str, payload: NoteUpdate) -> None:
+    database.save_timed_note(activity_id, day, payload.body)
+
+
+@app.get("/api/timed-activities/{activity_id}/days/{day}/note")
+def get_timed_note(activity_id: int, day: str) -> dict:
+    return database.timed_note_detail(activity_id, day)
+
+
+@app.get("/api/timed-activities/notes/summaries")
+def timed_note_summaries() -> list[dict]:
+    return database.timed_note_summaries()
+
+
+@app.get("/api/timed-activities/{activity_id}/notes")
+def timed_activity_notes(activity_id: int) -> list[dict]:
+    return database.timed_notes_for(activity_id)
 
 
 @app.get("/api/habits")

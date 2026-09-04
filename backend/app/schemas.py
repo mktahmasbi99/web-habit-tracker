@@ -24,6 +24,10 @@ class NoteUpdate(BaseModel):
     body: str = Field(max_length=20_000)
 
 
+class TimedEntryUpdate(BaseModel):
+    minutes: int = Field(ge=1, le=1440)
+
+
 class BackupSettingsUpdate(BaseModel):
     dailyEnabled: bool
     dailyTime: str

@@ -1,4 +1,4 @@
-import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, Unresolved } from "./types";
+import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -33,6 +33,22 @@ export const api = {
   config: () => request<Config>("/api/config"),
   habits: (day: string) => request<HabitDay[]>(`/api/days/${day}/habits`),
   createHabit: (name: string, startDate: string) => request<{ id: number }>("/api/habits", json("POST", { name, startDate })),
+  timedActivities: (day: string) => request<TimedActivityDay[]>(`/api/days/${day}/timed-activities`),
+  createTimedActivity: (name: string, startDate: string) => request<{ id: number }>("/api/timed-activities", json("POST", { name, startDate })),
+  timedActivitySummaries: () => request<TimedActivitySummary[]>("/api/timed-activities"),
+  timedActivityDetail: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}`),
+  renameTimedActivity: (id: number, name: string) => request<TimedActivitySummary>(`/api/timed-activities/${id}`, json("PATCH", { name })),
+  archiveTimedActivity: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}/archive`, { method: "POST" }),
+  restoreTimedActivity: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}/restore`, { method: "POST" }),
+  deleteTimedActivity: (id: number, confirmation: string) => request<{ status: string; backup: string }>(`/api/timed-activities/${id}`, json("DELETE", { confirmation })),
+  timedWeek: (id: number, day: string) => request<TimedActivityWeek>(`/api/timed-activities/${id}/weeks/${day}`),
+  addTimedEntry: (id: number, day: string, minutes: number) => request<{ id: number; minutes: number }>(`/api/timed-activities/${id}/days/${day}/entries`, json("POST", { minutes })),
+  updateTimedEntry: (id: number, entryId: number, minutes: number) => request<{ id: number; minutes: number }>(`/api/timed-activities/${id}/entries/${entryId}`, json("PATCH", { minutes })),
+  deleteTimedEntry: (id: number, entryId: number) => request<void>(`/api/timed-activities/${id}/entries/${entryId}`, { method: "DELETE" }),
+  saveTimedNote: (id: number, day: string, body: string) => request<void>(`/api/timed-activities/${id}/days/${day}/note`, json("PUT", { body })),
+  timedNote: (id: number, day: string) => request<NoteDetail>(`/api/timed-activities/${id}/days/${day}/note`),
+  timedNoteSummaries: () => request<TimedActivitySummary[]>("/api/timed-activities/notes/summaries"),
+  timedActivityNotes: (id: number) => request<TimedActivityNote[]>(`/api/timed-activities/${id}/notes`),
   habitSummaries: () => request<HabitSummary[]>("/api/habits"),
   habitDetail: (id: number) => request<HabitDetail>(`/api/habits/${id}`),
   renameHabit: (id: number, name: string) => request<HabitDetail>(`/api/habits/${id}`, json("PATCH", { name })),
