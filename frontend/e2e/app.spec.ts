@@ -5,7 +5,7 @@ test("creates and completes a habit", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
   await page.getByRole("button", { name: "Add habit" }).click();
-  const dialog = page.getByRole("dialog", { name: "New habit" });
+  const dialog = page.getByRole("dialog", { name: "New activity" });
   await dialog.getByLabel("Habit name").fill(habitName);
   await dialog.getByRole("button", { name: "Add habit", exact: true }).click();
   const card = page.getByRole("heading", { name: habitName, exact: true }).locator("xpath=ancestor::article");
@@ -35,8 +35,8 @@ test("renames, archives, restores, and safely deletes a habit", async ({ page })
   const renamed = `${original} renamed`;
   await page.goto("/");
   await page.getByRole("button", { name: "Add habit" }).click();
-  await page.getByRole("dialog", { name: "New habit" }).getByLabel("Habit name").fill(original);
-  await page.getByRole("dialog", { name: "New habit" }).getByRole("button", { name: "Add habit", exact: true }).click();
+  await page.getByRole("dialog", { name: "New activity" }).getByLabel("Habit name").fill(original);
+  await page.getByRole("dialog", { name: "New activity" }).getByRole("button", { name: "Add habit", exact: true }).click();
   await page.getByRole("button", { name: `Open ${original}` }).click();
   await expect(page).toHaveURL(/\/habits\/\d+$/);
 
