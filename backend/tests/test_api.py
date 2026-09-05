@@ -114,9 +114,13 @@ def test_timed_activity_sessions_week_totals_notes_and_limits(monkeypatch, tmp_p
             f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/entries",
             json={"minutes": 80},
         ).json()
+        newest_entry = client.post(
+            f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/entries",
+            json={"minutes": 10},
+        ).json()
         summary = client.get(f"/api/days/{today.isoformat()}/timed-activities").json()[0]
-        assert summary["dayMinutes"] == 80
-        assert summary["weekMinutes"] == 125
+        assert summary["dayMinutes"] == 90
+        assert summary["weekMinutes"] == 135
         assert client.patch(
             f"/api/timed-activities/{activity_id}/entries/{entry['id']}", json={"minutes": 120}
         ).json()["minutes"] == 120
@@ -131,7 +135,9 @@ def test_timed_activity_sessions_week_totals_notes_and_limits(monkeypatch, tmp_p
         assert note_detail["body"] == "Chapter four"
         week = client.get(f"/api/timed-activities/{activity_id}/weeks/{today.isoformat()}").json()
         assert week["note"] == "Chapter four"
-        assert next(item for item in week["days"] if item["date"] == today.isoformat())["minutes"] == 120
+        today_detail = next(item for item in week["days"] if item["date"] == today.isoformat())
+        assert today_detail["minutes"] == 130
+        assert [item["id"] for item in today_detail["entries"]] == [newest_entry["id"], entry["id"]]
         assert client.post(
             f"/api/timed-activities/{activity_id}/days/{today.isoformat()}/entries",
             json={"minutes": 1321},

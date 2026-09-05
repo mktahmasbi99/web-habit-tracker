@@ -30,8 +30,9 @@ function EmptyState({ icon, title, detail }: { icon: React.ReactNode; title: str
   return <div className="empty-state">{icon}<h2>{title}</h2><p>{detail}</p></div>;
 }
 
-function TodayPage({ config, selectedDate, onDate, onDataChange, reportError, openHabit, openNote }: {
+function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, reportError, openHabit, openNote }: {
   config: Config; selectedDate: string; onDate: (date: string) => void;
+  refresh: number;
   onDataChange: () => void; reportError: (error: unknown) => void; openHabit: (id: number) => void; openNote: (target: NoteTarget) => void;
 }) {
   const [habits, setHabits] = useState<HabitDay[]>([]);
@@ -46,7 +47,8 @@ function TodayPage({ config, selectedDate, onDate, onDataChange, reportError, op
     try { const [daily, activities] = await Promise.all([api.habits(selectedDate), api.timedActivities(selectedDate)]); setHabits(daily); setTimed(activities); } catch (error) { reportError(error); }
     finally { setLoading(false); }
   }, [selectedDate, reportError]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, refresh]);
+  useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
   const isRelativeDay = selectedDate === config.today || selectedDate === shiftDay(config.today, -1) || selectedDate === shiftDay(config.today, 1);
   const title = selectedDate === config.today ? "Today" : selectedDate === shiftDay(config.today, -1) ? "Yesterday" : selectedDate === shiftDay(config.today, 1) ? "Tomorrow" : prettyDate(selectedDate);
   const setStatus = async (habit: HabitDay, status: Status) => {
@@ -312,7 +314,7 @@ export default function App() {
   const closeNote = () => { if (window.history.state?.noteTarget) window.history.back(); else { window.history.replaceState(null, "", "/"); setNoteTarget(null); } };
   return <div className="app-shell">
     <main className="content">
-      {tab === "today" && <TodayPage config={config} selectedDate={selectedDate} onDate={setSelectedDate} onDataChange={refreshAll} reportError={reportError} openHabit={openHabit} openNote={openNote} />}
+      {tab === "today" && <TodayPage config={config} selectedDate={selectedDate} refresh={refresh} onDate={setSelectedDate} onDataChange={refreshAll} reportError={reportError} openHabit={openHabit} openNote={openNote} />}
       {tab === "stats" && <StatsPage refresh={refresh} selectedDate={selectedDate} today={config.today} onDate={setSelectedDate} reportError={reportError} />}
       {tab === "notes" && <NotesPage refresh={refresh} reportError={reportError} openNote={openNote} noteOpen={noteTarget !== null} />}
       {tab === "manage" && <ManagementPage refresh={refresh} openHabit={openHabit} openTimed={setDetailTimedId} reportError={reportError} />}

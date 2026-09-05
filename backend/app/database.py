@@ -445,7 +445,7 @@ class HabitDatabase:
             rows = connection.execute(
                 """SELECT id, entry_date, minutes FROM timed_activity_entries
                    WHERE activity_id = ? AND entry_date BETWEEN ? AND ?
-                   ORDER BY entry_date, id""",
+                   ORDER BY entry_date, id DESC""",
                 (activity_id, monday.isoformat(), sunday.isoformat()),
             ).fetchall()
             note = connection.execute(

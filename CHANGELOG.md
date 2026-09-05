@@ -4,6 +4,9 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Refresh the Today card immediately after a daily habit is renamed.
+- Refresh timed-activity note indicators immediately after notes are saved or deleted.
+- Show timed-activity entries in reverse chronological order, with the newest entry first.
 - Add an expanded-by-default, preference-preserving Timed activities section with multiple duration sessions, hours-and-minutes entry, per-day 24-hour validation, selected-day and running weekly totals, Monday-first history navigation, and per-activity daily notes.
 - Add dedicated timed-activity persistence and APIs without changing the five legacy tables or the done/missed compatibility contract.
 - Put timed entries before the weekly and selected-day statistics, keep notes last, and make note saving update the open sheet immediately with visible progress and confirmation.
