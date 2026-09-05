@@ -4,6 +4,7 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Replace the redundant Timed activity card label with a clock-marked selected-day total, repeat that total beside the entry-sheet title, move the entry form above saved entries, and refresh totals after entry changes.
 - Refresh the Today card immediately after a daily habit is renamed.
 - Refresh timed-activity note indicators immediately after notes are saved or deleted.
 - Show timed-activity entries in reverse chronological order, with the newest entry first.

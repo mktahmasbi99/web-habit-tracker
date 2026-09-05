@@ -11,6 +11,7 @@ let noteResponse: unknown;
 let noteSummaries: unknown[];
 let habitNotes: unknown[];
 let habitName: string;
+let timedActivities: unknown[];
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
@@ -18,6 +19,7 @@ describe("Habit Tracker", () => {
     noteSummaries = [];
     habitNotes = [];
     habitName = "Read";
+    timedActivities = [];
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -34,8 +36,9 @@ describe("Habit Tracker", () => {
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
+      if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
       if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
-      if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok([]);
+      if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok(timedActivities);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/statistics") return ok([]);
       if (url === "/api/notes") return ok(noteSummaries);
@@ -51,6 +54,23 @@ describe("Habit Tracker", () => {
     expect(await screen.findByRole("heading", { name: "Read" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
+  });
+
+  it("shows selected-day totals and prioritizes logging in the timed activity sheet", async () => {
+    const user = userEvent.setup();
+    timedActivities = [
+      { id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 90, weekMinutes: 90, hasNote: false, archived: false },
+      { id: 11, name: "Offline", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false },
+    ];
+    render(<App />);
+    expect(await screen.findByText("1h 30m")).toBeInTheDocument();
+    expect(screen.getByText("0m")).toBeInTheDocument();
+    expect(screen.queryByText("Timed activity")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Study" }));
+    const hours = await screen.findByRole("spinbutton", { name: "Hours" });
+    const entries = screen.getByRole("heading", { name: "Entries" });
+    expect(hours.compareDocumentPosition(entries) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector(".timed-title-total")).toHaveTextContent("1h 30m");
   });
 
   it("refreshes the Today card after renaming a daily habit", async () => {
