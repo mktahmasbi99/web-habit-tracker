@@ -2,8 +2,31 @@ import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, Habit
 
 export class ApiError extends Error {}
 
+// Only reads time out. Writes are never retried automatically: their outcome may
+// already be committed even if the connection disappears.
+async function fetchRead(url: string, options?: RequestInit): Promise<Response> {
+  if (options?.method && options.method !== "GET") return fetch(url, options);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  options?.signal?.addEventListener("abort", abort, { once: true });
+  if (options?.signal?.aborted) controller.abort();
+  const timer = window.setTimeout(abort, 15_000);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Read the body inside the deadline too (headers alone are not completion).
+    const body = await response.arrayBuffer();
+    return new Response(response.status === 204 ? null : body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } catch (error) {
+    if (options?.signal?.aborted) throw error;
+    throw new ApiError(controller.signal.aborted ? "The server took too long to respond. Please retry." : "Cannot reach the server. Check your private-network connection and retry.");
+  } finally {
+    window.clearTimeout(timer);
+    options?.signal?.removeEventListener("abort", abort);
+  }
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, options);
+  const response = await fetchRead(url, options);
   if (!response.ok) {
     let message = "Something went wrong.";
     try { message = (await response.json()).detail ?? message; } catch { /* non-JSON error */ }
@@ -18,7 +41,7 @@ const json = (method: string, body: unknown): RequestInit => ({
 });
 
 async function download(url: string, options?: RequestInit): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(url, options);
+  const response = await fetchRead(url, options);
   if (!response.ok) {
     let message = "Something went wrong.";
     try { message = (await response.json()).detail ?? message; } catch { /* non-JSON error */ }
@@ -31,9 +54,9 @@ async function download(url: string, options?: RequestInit): Promise<{ blob: Blo
 
 export const api = {
   config: () => request<Config>("/api/config"),
-  habits: (day: string) => request<HabitDay[]>(`/api/days/${day}/habits`),
+  habits: (day: string, signal?: AbortSignal) => request<HabitDay[]>(`/api/days/${day}/habits`, { signal }),
   createHabit: (name: string, startDate: string) => request<{ id: number }>("/api/habits", json("POST", { name, startDate })),
-  timedActivities: (day: string) => request<TimedActivityDay[]>(`/api/days/${day}/timed-activities`),
+  timedActivities: (day: string, signal?: AbortSignal) => request<TimedActivityDay[]>(`/api/days/${day}/timed-activities`, { signal }),
   createTimedActivity: (name: string, startDate: string) => request<{ id: number }>("/api/timed-activities", json("POST", { name, startDate })),
   timedActivitySummaries: () => request<TimedActivitySummary[]>("/api/timed-activities"),
   timedActivityDetail: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}`),
@@ -59,7 +82,7 @@ export const api = {
   setStatus: (id: number, day: string, status: Status) => request<void>(`/api/habits/${id}/days/${day}/status`, json("PUT", { status })),
   note: (id: number, day: string) => request<NoteDetail>(`/api/habits/${id}/days/${day}/note`),
   saveNote: (id: number, day: string, body: string) => request<void>(`/api/habits/${id}/days/${day}/note`, json("PUT", { body })),
-  month: (month: string) => request<MonthDay[]>(`/api/months/${month}`),
+  month: (month: string, signal?: AbortSignal) => request<MonthDay[]>(`/api/months/${month}`, { signal }),
   statistics: () => request<Statistic[]>("/api/statistics"),
   noteSummaries: () => request<NoteSummary[]>("/api/notes"),
   habitNotes: (id: number) => request<HabitNote[]>(`/api/habits/${id}/notes`),

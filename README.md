@@ -11,7 +11,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Pending, Done, and Missed status controls
 - Expandable Timed activities with clock-labelled selected-day totals on cards and entry sheets, prominent hours-and-minutes session logging, Monday-through-selected-day running totals, weekly history, and per-activity daily notes
 - Current, longest, and historical streak statistics
-- Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter while editing to save and exit
+- Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
 - Dedicated Management navigation divided into active and archived Daily habits and Timed activities
 - Unresolved past-date notifications inside the app
@@ -60,7 +60,7 @@ The More tab creates downloadable on-demand SQLite backups and manages server-si
 
 The backup list tags Daily, Weekly, and On-demand backups. Pre-import, Pre-restore, and Pre-delete safety snapshots are hidden by default behind **Show safety backups** and share a retention limit of eight. Every backup can be downloaded, restored, or deleted. Restore requires typing `RESTORE`, validates and migrates a staged copy, preserves the current schedule settings, creates a safety snapshot, and then atomically replaces live data. Permanently deleting a habit also requires typing `DELETE` and creates a safety snapshot immediately before removal; deletion stops if that snapshot cannot be created.
 
-Habit Management lives on More. Active habits are expanded by default and archived habits are collapsed by default. Habits can also be opened directly from the main daily view. Opening a habit provides rename, archive or restore, and protected deletion actions. Archive preserves logs and notes, treats the archive date as the final active day, and records each active period. Restore uses a normal confirmation, begins on the server-authoritative current date, and does not backfill the inactive gap. Returning from habit details preserves the disclosure state and list position until a full reload.
+Habit Management lives on the Manage tab. Active habits are expanded by default and archived habits are collapsed by default. Habits can also be opened directly from the main daily view. Opening a habit provides rename, archive or restore, and protected deletion actions. Archive preserves logs and notes, treats the archive date as the final active day, and records each active period. Restore uses a normal confirmation, begins on the server-authoritative current date, and does not backfill the inactive gap. Returning from habit details preserves the disclosure state and list position until a full reload.
 
 The collapsed **More** section below the server backup list accepts uploaded backups produced by this web application. Web backups contain an explicit application and format marker. At the bottom of Advanced, the collapsed **Import legacy database** section accepts a compatible legacy SQLite database. Legacy import validates database integrity and schema, requires typing `IMPORT`, migrates a staged copy, creates a safety backup, and atomically swaps the staged database into place. Uploaded source files are never changed.
 
@@ -81,3 +81,63 @@ PWA support will remain server-backed and require connectivity to the NAS throug
 ## License
 
 MIT
+
+## Phone behavior and verification
+
+The app refreshes the server date and daily data on foregrounding, reconnection,
+page restoration, and every 30 seconds while visible. A selection following Today
+advances with the server day; an explicitly selected historical date stays selected.
+Open timed-entry sheets keep their original date. The server's configured IANA `TZ`
+remains authoritative even when the phone travels to another timezone.
+
+Daily navigation cancels obsolete reads. A pending status write disables the other
+status buttons for that habit/date and displays Saving. Reads have a 15-second
+deadline and recoverable loading errors; startup, daily lists, calendar, and detail
+screens offer Retry. Writes are never retried automatically. If connectivity is lost
+after submitting a duration entry, check the server's entries before submitting again.
+
+Timed-entry fields start blank and show `0` only as a placeholder. The Minutes field
+accepts a total duration through 1,440 minutes; when it loses focus, the app converts
+valid totals to the corresponding hours-and-minutes fields (for example, `100` becomes
+`1h 40m`).
+
+Sheets use native modal dialogs, contain keyboard focus, restore focus on dismissal,
+and support Escape and browser Back, including nested confirmations. Timed-management
+details have direct URLs. Note editing asks before discarding unsaved changes through
+Close or Back, and requests the browser's unload warning on reload or exit. Drafts
+remain in memory across reconnects; they are not durable browser storage and cannot
+survive a terminated browser process. Explicit Cancel discards the edit.
+
+Navigation stays along the bottom on short landscape screens. Touch controls target
+44 CSS pixels; form controls use at least 16px text, calendar states include accessible
+summaries, and layouts account for safe areas and the visible keyboard viewport.
+Pinch zoom, system light/dark appearance, and reduced motion remain supported.
+
+Run frontend unit tests, type checking, build, and lint as follows:
+
+```sh
+cd frontend
+npm test -- --run
+npm run typecheck
+npm run build
+npm run lint
+```
+
+Playwright includes desktop Chromium, Android, narrow and landscape Chromium,
+and portrait/narrow/landscape WebKit profiles. E2E tests create and delete test data:
+run them only against an isolated server with a temporary database, never a live NAS
+database. Set `E2E_BASE_URL` to that server's URL; the default is localhost:8000.
+
+```sh
+E2E_BASE_URL=http://127.0.0.1:8765 npm run test:e2e
+```
+
+Portable daily-contract cases and an independent copy of the legacy five-table schema
+live in `backend/tests/fixtures`. Backend tests cover leap-day gaps, Pending/Missed
+streak boundaries, future daily edits, IANA timezone/DST boundaries, and legacy import
+preservation without modifying the source database.
+
+Before a phone release, verify on an actual iPhone and Android phone: software-keyboard
+open/close and rotation, browser toolbar expansion, safe areas, VoiceOver/TalkBack,
+200% text, swipe Back with an unsaved note, overnight resume, and SQLite backup
+save-to-Files/upload. Browser emulation does not establish those native-device behaviors.

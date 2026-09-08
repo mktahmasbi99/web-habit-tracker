@@ -56,6 +56,20 @@ describe("Habit Tracker", () => {
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
   });
 
+  it("uses in-sheet radio choices for the activity type", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Add habit" }));
+    const dialog = screen.getByRole("dialog", { name: "New activity" });
+    expect(dialog.querySelector("select")).toBeNull();
+    const daily = screen.getByRole("radio", { name: "Daily habit" });
+    const timed = screen.getByRole("radio", { name: "Timed activity" });
+    expect(daily).toBeChecked();
+    await user.click(timed);
+    expect(timed).toBeChecked();
+    expect(screen.getByRole("textbox", { name: "Activity name" })).toBeInTheDocument();
+    expect(screen.queryByText("Daily habit (done or missed)")).not.toBeInTheDocument();
+  });
+
   it("shows selected-day totals and prioritizes logging in the timed activity sheet", async () => {
     const user = userEvent.setup();
     timedActivities = [
@@ -71,6 +85,34 @@ describe("Habit Tracker", () => {
     const entries = screen.getByRole("heading", { name: "Entries" });
     expect(hours.compareDocumentPosition(entries) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector(".timed-title-total")).toHaveTextContent("1h 30m");
+  });
+
+  it("starts duration fields empty and converts total minutes into hours and minutes", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 90, weekMinutes: 90, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    const hours = await screen.findByRole("spinbutton", { name: "Hours" });
+    const minutes = screen.getByRole("spinbutton", { name: "Minutes" });
+    expect(hours).toHaveValue(null);
+    expect(minutes).toHaveValue(null);
+    expect(hours).toHaveAttribute("placeholder", "0");
+    expect(minutes).toHaveAttribute("placeholder", "0");
+    await user.type(minutes, "100");
+    expect(minutes).toHaveValue(100);
+    await user.click(hours);
+    await waitFor(() => {
+      expect(hours).toHaveValue(1);
+      expect(minutes).toHaveValue(40);
+    });
+    await user.clear(hours);
+    await user.clear(minutes);
+    await user.type(minutes, "1440");
+    await user.click(hours);
+    await waitFor(() => {
+      expect(hours).toHaveValue(24);
+      expect(minutes).toHaveValue(0);
+    });
   });
 
   it("refreshes the Today card after renaming a daily habit", async () => {

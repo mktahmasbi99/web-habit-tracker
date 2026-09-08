@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Start timed-entry inputs empty with a zero placeholder, and accept total minutes through 24 hours before normalizing them into hours and minutes.
+
+- Replace the browser-managed activity Type dropdown with large in-sheet radio choices and shorten “Daily habit (done or missed)” to “Daily habit”.
+
+- Refresh the server-owned date on resume, reconnection, and while visible, preserving historical selections and open timed-entry dates.
+- Cancel obsolete daily/calendar reads, prevent competing status taps, and provide bounded reads and recoverable loading errors without automatic write retries.
+- Use accessible native modal sheets with focus containment/restoration, scroll locking, visible in-sheet errors, and nested browser-Back behavior.
+- Add timed-management URLs, protect unsaved notes during navigation, and support Cmd+Enter alongside Ctrl+Enter.
+- Improve short landscape navigation, safe areas, touch targets, visible tab labels, form typography, long-content wrapping, calendar semantics, and keyboard viewport sizing.
+- Add mobile browser regression profiles and tests plus portable legacy/date/import compatibility fixtures; document real-device verification limits.
+
 - Replace the redundant Timed activity card label with a clock-marked selected-day total, repeat that total beside the entry-sheet title, move the entry form above saved entries, and refresh totals after entry changes.
 - Refresh the Today card immediately after a daily habit is renamed.
 - Refresh timed-activity note indicators immediately after notes are saved or deleted.

@@ -1,0 +1,6 @@
+[
+  {"name": "leap-day gap", "start": "2024-02-28", "today": "2024-03-02", "statuses": {"2024-02-29": "pending", "2024-03-02": "done"}, "expected_current": 2, "expected_longest": 2},
+  {"name": "historical missed", "start": "2024-02-28", "today": "2024-03-02", "statuses": {"2024-03-01": "missed", "2024-03-02": "done"}, "expected_current": 1, "expected_longest": 2},
+  {"name": "today pending counts through yesterday", "start": "2024-02-28", "today": "2024-03-02", "statuses": {}, "expected_current": 3, "expected_longest": 3},
+  {"name": "today missed counts through yesterday", "start": "2024-02-28", "today": "2024-03-02", "statuses": {"2024-03-02": "missed"}, "expected_current": 3, "expected_longest": 3}
+]
