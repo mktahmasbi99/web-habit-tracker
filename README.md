@@ -10,6 +10,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Daily habit creation from any selected date
 - Pending, Done, and Missed status controls
 - Expandable Timed activities with clock-labelled selected-day totals on cards and entry sheets, prominent hours-and-minutes session logging, Monday-through-selected-day running totals, weekly history, and per-activity daily notes
+- Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a monthly completion calendar, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current, longest, and historical streak statistics
 - Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion

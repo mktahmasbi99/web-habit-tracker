@@ -17,6 +17,11 @@ export interface TimedActivitySummary {
   id: number; name: string; startDate: string; archived: boolean; archivedAt: string | null; noteCount: number;
 }
 export interface TimedActivityNote { activityId: number; activityName: string; date: string; body: string }
+export interface ActivityLogDay { id: number; name: string; startDate: string; lastCompletedDate: string | null; completed: boolean; hasNote: boolean; archived: boolean }
+export interface ActivityLogSummary { id: number; name: string; startDate: string; archived: boolean; archivedAt: string | null; noteCount: number }
+export interface ActivityLogMonthDay { date: string; active: boolean; completed: boolean; hasNote: boolean }
+export interface ActivityLogMonth { id: number; name: string; startDate: string; month: string; days: ActivityLogMonthDay[] }
+export interface ActivityLogNote { activityId: number; activityName: string; date: string; body: string }
 export interface Streak { startDate: string; endDate: string; length: number }
 export interface ActiveRange { startDate: string; endDate: string }
 export interface HabitSummary {

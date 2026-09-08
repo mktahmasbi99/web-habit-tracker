@@ -86,6 +86,28 @@ def test_notes_and_statistics(store):
     assert store.note(habit["id"], today) == ""
 
 
+def test_activity_log_is_observational_with_date_notes_and_lifecycle(store):
+    today = store.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
+    item = store.create_activity_log("Clean filter", yesterday)
+    assert store.activity_logs_on(today.isoformat())[0]["lastCompletedDate"] is None
+    store.set_activity_log_completion(item["id"], yesterday, True)
+    store.save_activity_log_note(item["id"], today.isoformat(), "Water parameters normal")
+    card = store.activity_logs_on(today.isoformat())[0]
+    assert card["lastCompletedDate"] == yesterday
+    assert card["completed"] is False
+    assert card["hasNote"] is True
+    month = store.activity_log_month(item["id"], today.strftime("%Y-%m"))
+    assert next(day for day in month["days"] if day["date"] == yesterday)["completed"] is True
+    assert next(day for day in month["days"] if day["date"] == today.isoformat())["hasNote"] is True
+    with pytest.raises(DomainError):
+        store.set_activity_log_completion(item["id"], (today + timedelta(days=1)).isoformat(), True)
+    store.archive_activity_log(item["id"])
+    assert store.activity_log_detail(item["id"])["archived"] is True
+    store.restore_activity_log(item["id"])
+    assert store.activity_log_detail(item["id"])["archived"] is False
+
+
 def test_inactive_habit_rejects_status_and_new_note(store):
     tomorrow = (store.today() + timedelta(days=1)).isoformat()
     habit = store.create_habit("Later", tomorrow)

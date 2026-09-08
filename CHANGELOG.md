@@ -1,5 +1,7 @@
 # Changelog
 
+- Add Activity log: an independent, calendar-based observational activity type with last-done cards, per-date completions and notes, archive management, and no streaks, schedules, reminders, or time totals.
+
 All notable changes to this project are documented here.
 
 ## Unreleased

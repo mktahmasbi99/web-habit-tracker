@@ -1,4 +1,4 @@
-import type { ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Statistic, Status, SystemNotification, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -72,6 +72,19 @@ export const api = {
   timedNote: (id: number, day: string) => request<NoteDetail>(`/api/timed-activities/${id}/days/${day}/note`),
   timedNoteSummaries: () => request<TimedActivitySummary[]>("/api/timed-activities/notes/summaries"),
   timedActivityNotes: (id: number) => request<TimedActivityNote[]>(`/api/timed-activities/${id}/notes`),
+  activityLogs: (day: string, signal?: AbortSignal) => request<ActivityLogDay[]>(`/api/days/${day}/activity-logs`, { signal }),
+  createActivityLog: (name: string, startDate: string) => request<{ id: number }>("/api/activity-logs", json("POST", { name, startDate })),
+  activityLogSummaries: () => request<ActivityLogSummary[]>("/api/activity-logs"),
+  activityLogDetail: (id: number) => request<ActivityLogSummary>(`/api/activity-logs/${id}`),
+  renameActivityLog: (id: number, name: string) => request<ActivityLogSummary>(`/api/activity-logs/${id}`, json("PATCH", { name })),
+  archiveActivityLog: (id: number) => request<ActivityLogSummary>(`/api/activity-logs/${id}/archive`, { method: "POST" }),
+  restoreActivityLog: (id: number) => request<ActivityLogSummary>(`/api/activity-logs/${id}/restore`, { method: "POST" }),
+  deleteActivityLog: (id: number, confirmation: string) => request<{ status: string; backup: string }>(`/api/activity-logs/${id}`, json("DELETE", { confirmation })),
+  activityLogMonth: (id: number, month: string) => request<ActivityLogMonth>(`/api/activity-logs/${id}/months/${month}`),
+  setActivityLogCompletion: (id: number, day: string, completed: boolean) => request<void>(`/api/activity-logs/${id}/days/${day}/completion`, json("PUT", { status: completed ? "done" : "pending" })),
+  saveActivityLogNote: (id: number, day: string, body: string) => request<void>(`/api/activity-logs/${id}/days/${day}/note`, json("PUT", { body })),
+  activityLogNote: (id: number, day: string) => request<NoteDetail>(`/api/activity-logs/${id}/days/${day}/note`),
+  activityLogNotes: (id: number) => request<ActivityLogNote[]>(`/api/activity-logs/${id}/notes`),
   habitSummaries: () => request<HabitSummary[]>("/api/habits"),
   habitDetail: (id: number) => request<HabitDetail>(`/api/habits/${id}`),
   renameHabit: (id: number, name: string) => request<HabitDetail>(`/api/habits/${id}`, json("PATCH", { name })),

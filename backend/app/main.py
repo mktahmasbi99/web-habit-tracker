@@ -157,6 +157,73 @@ def timed_activity_notes(activity_id: int) -> list[dict]:
     return database.timed_notes_for(activity_id)
 
 
+@app.get("/api/days/{day}/activity-logs")
+def day_activity_logs(day: str) -> list[dict]:
+    return database.activity_logs_on(day)
+
+
+@app.post("/api/activity-logs", status_code=201)
+def create_activity_log(payload: HabitCreate) -> dict:
+    return database.create_activity_log(payload.name, payload.startDate)
+
+
+@app.get("/api/activity-logs")
+def activity_logs() -> list[dict]:
+    return database.activity_log_summaries()
+
+
+@app.get("/api/activity-logs/{activity_id}")
+def activity_log_detail(activity_id: int) -> dict:
+    return database.activity_log_detail(activity_id)
+
+
+@app.patch("/api/activity-logs/{activity_id}")
+def rename_activity_log(activity_id: int, payload: HabitRename) -> dict:
+    return database.rename_activity_log(activity_id, payload.name)
+
+
+@app.post("/api/activity-logs/{activity_id}/archive")
+def archive_activity_log(activity_id: int) -> dict:
+    return database.archive_activity_log(activity_id)
+
+
+@app.post("/api/activity-logs/{activity_id}/restore")
+def restore_activity_log(activity_id: int) -> dict:
+    return database.restore_activity_log(activity_id)
+
+
+@app.delete("/api/activity-logs/{activity_id}")
+def delete_activity_log(activity_id: int, payload: HabitDelete) -> dict[str, str]:
+    return {"status": "deleted", "backup": database.delete_activity_log(activity_id, payload.confirmation)}
+
+
+@app.get("/api/activity-logs/{activity_id}/months/{month}")
+def activity_log_month(activity_id: int, month: str) -> dict:
+    return database.activity_log_month(activity_id, month)
+
+
+@app.put("/api/activity-logs/{activity_id}/days/{day}/completion", status_code=204)
+def set_activity_log_completion(activity_id: int, day: str, payload: StatusUpdate) -> None:
+    if payload.status not in {"done", "pending"}:
+        raise DomainError("Activity records can be done or pending.")
+    database.set_activity_log_completion(activity_id, day, payload.status == "done")
+
+
+@app.put("/api/activity-logs/{activity_id}/days/{day}/note", status_code=204)
+def update_activity_log_note(activity_id: int, day: str, payload: NoteUpdate) -> None:
+    database.save_activity_log_note(activity_id, day, payload.body)
+
+
+@app.get("/api/activity-logs/{activity_id}/days/{day}/note")
+def get_activity_log_note(activity_id: int, day: str) -> dict:
+    return database.activity_log_note_detail(activity_id, day)
+
+
+@app.get("/api/activity-logs/{activity_id}/notes")
+def activity_log_notes(activity_id: int) -> list[dict]:
+    return database.activity_log_notes_for(activity_id)
+
+
 @app.get("/api/habits")
 def habits() -> list[dict]:
     return database.habit_summaries()

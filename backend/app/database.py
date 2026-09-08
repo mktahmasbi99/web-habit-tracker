@@ -188,6 +188,39 @@ class HabitDatabase:
                 CREATE INDEX IF NOT EXISTS idx_timed_entries_activity_date
                     ON timed_activity_entries(activity_id, entry_date);
                 CREATE INDEX IF NOT EXISTS idx_timed_notes_date ON timed_activity_notes(note_date);
+                CREATE TABLE IF NOT EXISTS activity_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    start_date TEXT NOT NULL,
+                    archived_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS activity_log_completions (
+                    activity_id INTEGER NOT NULL,
+                    completion_date TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (activity_id, completion_date),
+                    FOREIGN KEY (activity_id) REFERENCES activity_logs(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS activity_log_notes (
+                    activity_id INTEGER NOT NULL,
+                    note_date TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (activity_id, note_date),
+                    FOREIGN KEY (activity_id) REFERENCES activity_logs(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS activity_log_archive_periods (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    activity_id INTEGER NOT NULL,
+                    archived_at TEXT NOT NULL,
+                    resurrected_at TEXT,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (activity_id) REFERENCES activity_logs(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS idx_activity_log_completions_date
+                    ON activity_log_completions(completion_date);
+                CREATE INDEX IF NOT EXISTS idx_activity_log_notes_date ON activity_log_notes(note_date);
                 """
             )
             habit_columns = {
@@ -208,6 +241,9 @@ class HabitDatabase:
             )
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (3)"
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (4)"
             )
             connection.execute("PRAGMA optimize")
             connection.commit()
@@ -555,6 +591,155 @@ class HabitDatabase:
             "body": row["body"] if row else "", "exists": row is not None,
             "archived": activity["archived_at"] is not None,
         }
+
+    def _activity_log_row(self, connection: sqlite3.Connection, activity_id: int) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT id, name, start_date, archived_at FROM activity_logs WHERE id = ?", (activity_id,)
+        ).fetchone()
+        if row is None:
+            raise DomainError("Activity log item not found.")
+        return row
+
+    def _activity_log_active(self, connection: sqlite3.Connection, activity_id: int, day: str) -> bool:
+        return bool(connection.execute("""SELECT EXISTS(SELECT 1 FROM activity_logs a
+            WHERE a.id = ? AND a.start_date <= ? AND NOT EXISTS (
+                SELECT 1 FROM activity_log_archive_periods p WHERE p.activity_id = a.id
+                AND p.archived_at < ? AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)))""",
+            (activity_id, day, day, day)).fetchone()[0])
+
+    def create_activity_log(self, name: str, start_date: str) -> dict:
+        cleaned, start = self._clean_name(name), self.parse_day(start_date)
+        with self.connect() as connection, connection:
+            cursor = connection.execute("INSERT INTO activity_logs(name, start_date) VALUES (?, ?)", (cleaned, start.isoformat()))
+        return {"id": cursor.lastrowid, "name": cleaned, "startDate": start.isoformat()}
+
+    def activity_log_summaries(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT a.id, a.name, a.start_date, a.archived_at, COUNT(n.activity_id) note_count
+                FROM activity_logs a LEFT JOIN activity_log_notes n ON n.activity_id = a.id
+                GROUP BY a.id, a.name, a.start_date, a.archived_at ORDER BY a.start_date, a.name, a.id""").fetchall()
+        return [{"id": row["id"], "name": row["name"], "startDate": row["start_date"],
+                 "archived": row["archived_at"] is not None, "archivedAt": row["archived_at"], "noteCount": row["note_count"]} for row in rows]
+
+    def activity_log_detail(self, activity_id: int) -> dict:
+        item = next((item for item in self.activity_log_summaries() if item["id"] == activity_id), None)
+        if item is None:
+            raise DomainError("Activity log item not found.")
+        return item
+
+    def rename_activity_log(self, activity_id: int, name: str) -> dict:
+        with self.connect() as connection, connection:
+            self._activity_log_row(connection, activity_id)
+            connection.execute("UPDATE activity_logs SET name = ? WHERE id = ?", (self._clean_name(name), activity_id))
+        return self.activity_log_detail(activity_id)
+
+    def archive_activity_log(self, activity_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            item = self._activity_log_row(connection, activity_id)
+            if item["archived_at"] is not None:
+                raise DomainError("Activity log item is already archived.")
+            if today < item["start_date"]:
+                raise DomainError("An activity log item cannot be archived before its start date.")
+            connection.execute("UPDATE activity_logs SET archived_at = ? WHERE id = ?", (today, activity_id))
+            connection.execute("INSERT INTO activity_log_archive_periods(activity_id, archived_at) VALUES (?, ?)", (activity_id, today))
+        return self.activity_log_detail(activity_id)
+
+    def restore_activity_log(self, activity_id: int) -> dict:
+        today = self.today().isoformat()
+        with self.connect() as connection, connection:
+            item = self._activity_log_row(connection, activity_id)
+            if item["archived_at"] is None:
+                raise DomainError("Activity log item is already active.")
+            connection.execute("UPDATE activity_logs SET archived_at = NULL WHERE id = ?", (activity_id,))
+            cursor = connection.execute("""UPDATE activity_log_archive_periods SET resurrected_at = ? WHERE id = (
+                SELECT id FROM activity_log_archive_periods WHERE activity_id = ? AND resurrected_at IS NULL
+                ORDER BY archived_at DESC, id DESC LIMIT 1)""", (today, activity_id))
+            if cursor.rowcount != 1:
+                raise DomainError("The activity log archive history is incomplete.")
+        return self.activity_log_detail(activity_id)
+
+    def delete_activity_log(self, activity_id: int, confirmation: str) -> str:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to permanently delete this activity log item.")
+        with self._replacement_lock:
+            with self.connect() as connection:
+                self._activity_log_row(connection, activity_id)
+            safety = self.create_backup("pre-delete")
+            with self.connect() as connection, connection:
+                connection.execute("DELETE FROM activity_logs WHERE id = ?", (activity_id,))
+        return safety.name
+
+    def activity_logs_on(self, day_value: str) -> list[dict]:
+        day = self.parse_day(day_value).isoformat()
+        with self.connect() as connection:
+            rows = connection.execute("""SELECT a.id, a.name, a.start_date, a.archived_at,
+                (SELECT MAX(c.completion_date) FROM activity_log_completions c WHERE c.activity_id = a.id AND c.completion_date <= ?) last_completed_date,
+                EXISTS(SELECT 1 FROM activity_log_completions c WHERE c.activity_id = a.id AND c.completion_date = ?) completed,
+                EXISTS(SELECT 1 FROM activity_log_notes n WHERE n.activity_id = a.id AND n.note_date = ?) has_note
+                FROM activity_logs a WHERE a.start_date <= ? AND NOT EXISTS (
+                    SELECT 1 FROM activity_log_archive_periods p WHERE p.activity_id = a.id AND p.archived_at < ?
+                    AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)) ORDER BY a.start_date, a.name, a.id""",
+                (day, day, day, day, day, day)).fetchall()
+        return [{"id": row["id"], "name": row["name"], "startDate": row["start_date"], "hasNote": bool(row["has_note"]),
+                 "lastCompletedDate": row["last_completed_date"], "completed": bool(row["completed"]), "archived": row["archived_at"] is not None} for row in rows]
+
+    def activity_log_month(self, activity_id: int, month_value: str) -> dict:
+        month_start = self.parse_day(f"{month_value}-01")
+        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        with self.connect() as connection:
+            item = self._activity_log_row(connection, activity_id)
+            completions = {row[0] for row in connection.execute("SELECT completion_date FROM activity_log_completions WHERE activity_id = ? AND completion_date >= ? AND completion_date < ?", (activity_id, month_start.isoformat(), next_month.isoformat()))}
+            notes = {row[0] for row in connection.execute("SELECT note_date FROM activity_log_notes WHERE activity_id = ? AND note_date >= ? AND note_date < ?", (activity_id, month_start.isoformat(), next_month.isoformat()))}
+            periods = connection.execute("SELECT archived_at, resurrected_at FROM activity_log_archive_periods WHERE activity_id = ?", (activity_id,)).fetchall()
+        days, current = [], month_start
+        while current < next_month:
+            value = current.isoformat()
+            inactive = any(p["archived_at"] < value and (p["resurrected_at"] is None or p["resurrected_at"] > value) for p in periods)
+            days.append({"date": value, "active": item["start_date"] <= value and not inactive, "completed": value in completions, "hasNote": value in notes})
+            current += timedelta(days=1)
+        return {"id": activity_id, "name": item["name"], "startDate": item["start_date"], "month": month_value, "days": days}
+
+    def set_activity_log_completion(self, activity_id: int, day_value: str, completed: bool) -> None:
+        day = self.parse_day(day_value).isoformat()
+        if day > self.today().isoformat():
+            raise DomainError("Future dates cannot receive activity records.")
+        with self.connect() as connection, connection:
+            if not self._activity_log_active(connection, activity_id, day):
+                raise DomainError("This activity log item was not active on the selected date.")
+            if completed:
+                connection.execute("INSERT OR IGNORE INTO activity_log_completions(activity_id, completion_date) VALUES (?, ?)", (activity_id, day))
+            else:
+                connection.execute("DELETE FROM activity_log_completions WHERE activity_id = ? AND completion_date = ?", (activity_id, day))
+
+    def save_activity_log_note(self, activity_id: int, day_value: str, body: str) -> None:
+        day = self.parse_day(day_value).isoformat()
+        if day > self.today().isoformat():
+            raise DomainError("Future dates cannot receive notes.")
+        if len(body) > 20_000:
+            raise DomainError("Notes cannot exceed 20,000 characters.")
+        with self.connect() as connection, connection:
+            if not self._activity_log_active(connection, activity_id, day):
+                raise DomainError("This activity log item was not active on the selected date.")
+            if body.strip():
+                connection.execute("""INSERT INTO activity_log_notes(activity_id, note_date, body, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(activity_id, note_date) DO UPDATE SET body = excluded.body, updated_at = CURRENT_TIMESTAMP""", (activity_id, day, body))
+            else:
+                connection.execute("DELETE FROM activity_log_notes WHERE activity_id = ? AND note_date = ?", (activity_id, day))
+
+    def activity_log_note_detail(self, activity_id: int, day_value: str) -> dict:
+        day = self.parse_day(day_value).isoformat()
+        with self.connect() as connection:
+            item = self._activity_log_row(connection, activity_id)
+            row = connection.execute("SELECT body FROM activity_log_notes WHERE activity_id = ? AND note_date = ?", (activity_id, day)).fetchone()
+        return {"habitId": activity_id, "habitName": item["name"], "date": day, "body": row["body"] if row else "", "exists": row is not None, "archived": item["archived_at"] is not None}
+
+    def activity_log_notes_for(self, activity_id: int) -> list[dict]:
+        with self.connect() as connection:
+            self._activity_log_row(connection, activity_id)
+            rows = connection.execute("""SELECT n.activity_id, a.name, n.note_date, n.body FROM activity_log_notes n
+                JOIN activity_logs a ON a.id = n.activity_id WHERE n.activity_id = ? ORDER BY n.note_date DESC""", (activity_id,)).fetchall()
+        return [{"activityId": r["activity_id"], "activityName": r["name"], "date": r["note_date"], "body": r["body"]} for r in rows]
 
     def _active_sql(self) -> str:
         return """h.start_date <= ? AND NOT EXISTS (

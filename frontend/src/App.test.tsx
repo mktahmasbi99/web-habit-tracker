@@ -12,6 +12,7 @@ let noteSummaries: unknown[];
 let habitNotes: unknown[];
 let habitName: string;
 let timedActivities: unknown[];
+let activityLogs: unknown[];
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
@@ -20,6 +21,7 @@ describe("Habit Tracker", () => {
     habitNotes = [];
     habitName = "Read";
     timedActivities = [];
+    activityLogs = [];
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -38,6 +40,13 @@ describe("Habit Tracker", () => {
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
       if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
       if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
+      if (url === "/api/activity-logs") return ok([]);
+      if (/^\/api\/activity-logs\/\d+\/days\/\d{4}-\d{2}-\d{2}\/completion$/.test(url)) {
+        const body = JSON.parse(String(init?.body)) as { status: string };
+        activityLogs = (activityLogs as Array<Record<string, unknown>>).map(item => ({ ...item, completed: body.status === "done", lastCompletedDate: body.status === "done" ? "2026-08-26" : null }));
+        return ok(undefined, 204);
+      }
+      if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/activity-logs$/.test(url)) return ok(activityLogs);
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok(timedActivities);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/statistics") return ok([]);
@@ -54,6 +63,16 @@ describe("Habit Tracker", () => {
     expect(await screen.findByRole("heading", { name: "Read" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
+  });
+
+  it("toggles an activity-log Done button without daily status choices", async () => {
+    activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: "2026-08-22", completed: false, hasNote: false, archived: false }];
+    const user = userEvent.setup(); render(<App />);
+    const done = await screen.findByRole("button", { name: "Mark Change vase water done" });
+    expect(done).toHaveTextContent("Done");
+    expect(done).toHaveAttribute("aria-pressed", "false");
+    await user.click(done);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Mark Change vase water not done" })).toHaveAttribute("aria-pressed", "true"));
   });
 
   it("uses in-sheet radio choices for the activity type", async () => {
