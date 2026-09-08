@@ -2,7 +2,7 @@
 import json
 import sqlite3
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -38,7 +38,7 @@ def test_server_date_uses_iana_zone(store, monkeypatch, zone, instant, expected)
     class Clock(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime.fromisoformat(instant).astimezone(tz or timezone.utc)
+            return datetime.fromisoformat(instant).astimezone(tz or UTC)
     monkeypatch.setattr(database, "datetime", Clock)
     store.settings = replace(store.settings, timezone_name=zone, timezone=ZoneInfo(zone))
     assert store.today().isoformat() == expected
