@@ -38,6 +38,10 @@ class BackupSettingsUpdate(BaseModel):
     weeklyRetention: int = Field(ge=1, le=365)
 
 
+class ThemeUpdate(BaseModel):
+    theme: Literal["system", "arcade", "crt", "neon", "desert", "cartridge"]
+
+
 class BackupAction(BaseModel):
     filename: str
     confirmation: str

@@ -13,8 +13,14 @@ def test_empty_database_contains_legacy_tables(store):
         )}
     assert {
         "habits", "habit_logs", "habit_notes", "habit_challenges",
-        "habit_archive_periods", "web_schema_migrations",
+        "habit_archive_periods", "web_schema_migrations", "web_app_settings",
     }.issubset(tables)
+
+
+def test_theme_is_a_shared_database_setting(store):
+    assert store.theme() == "system"
+    assert store.update_theme("neon") == "neon"
+    assert store.theme() == "neon"
 
 
 def test_pending_is_no_log_and_status_can_be_undone(store):

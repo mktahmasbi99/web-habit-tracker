@@ -16,6 +16,12 @@ def test_api_workflow(monkeypatch, tmp_path):
     config = client.get("/api/config")
     assert config.status_code == 200
     today = config.json()["today"]
+    assert config.json()["theme"] == "system"
+
+    theme = client.put("/api/settings/theme", json={"theme": "arcade"})
+    assert theme.status_code == 200
+    assert theme.json() == {"theme": "arcade"}
+    assert client.get("/api/config").json()["theme"] == "arcade"
 
     created = client.post("/api/habits", json={"name": "Read", "startDate": today})
     assert created.status_code == 201

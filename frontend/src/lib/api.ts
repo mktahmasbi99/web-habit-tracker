@@ -1,4 +1,4 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Status, SystemNotification, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -54,6 +54,7 @@ async function download(url: string, options?: RequestInit): Promise<{ blob: Blo
 
 export const api = {
   config: () => request<Config>("/api/config"),
+  saveTheme: (theme: Theme) => request<{ theme: Theme }>("/api/settings/theme", json("PUT", { theme })),
   habits: (day: string, signal?: AbortSignal) => request<HabitDay[]>(`/api/days/${day}/habits`, { signal }),
   createHabit: (name: string, startDate: string) => request<{ id: number }>("/api/habits", json("POST", { name, startDate })),
   timedActivities: (day: string, signal?: AbortSignal) => request<TimedActivityDay[]>(`/api/days/${day}/timed-activities`, { signal }),

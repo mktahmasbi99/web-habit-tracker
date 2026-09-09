@@ -21,6 +21,7 @@ from .schemas import (
     HabitRename,
     NoteUpdate,
     StatusUpdate,
+    ThemeUpdate,
     TimedEntryUpdate,
 )
 
@@ -71,7 +72,16 @@ def health() -> dict[str, str]:
 
 @app.get("/api/config")
 def config() -> dict[str, str]:
-    return {"today": database.today().isoformat(), "timezone": settings.timezone_name}
+    return {
+        "today": database.today().isoformat(),
+        "timezone": settings.timezone_name,
+        "theme": database.theme(),
+    }
+
+
+@app.put("/api/settings/theme")
+def update_theme(payload: ThemeUpdate) -> dict[str, str]:
+    return {"theme": database.update_theme(payload.theme)}
 
 
 @app.get("/api/days/{day}/habits")

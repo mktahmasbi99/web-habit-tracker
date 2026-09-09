@@ -26,7 +26,8 @@ describe("Habit Tracker", () => {
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/config") return ok({ today: "2026-08-26", timezone: "Europe/Warsaw" });
+      if (url === "/api/config") return ok({ today: "2026-08-26", timezone: "Europe/Warsaw", theme: "system" });
+      if (url === "/api/settings/theme") return ok({ theme: JSON.parse(String(init?.body)).theme });
       if (url === "/api/unresolved") return ok([{ date: "2026-08-25", pendingCount: 1 }]);
       if (url === "/api/system-notifications") return ok([]);
       if (url === "/api/backups") return ok([]);
@@ -309,6 +310,7 @@ describe("Habit Tracker", () => {
     await user.click(arcade);
     expect(arcade).toBeChecked();
     expect(document.documentElement).toHaveAttribute("data-theme", "arcade");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/settings/theme", expect.objectContaining({ method: "PUT", body: JSON.stringify({ theme: "arcade" }) })));
     const crt = screen.getByRole("radio", { name: "CRT Fighter" });
     await user.click(crt);
     expect(crt).toBeChecked();
@@ -325,6 +327,7 @@ describe("Habit Tracker", () => {
     await user.click(cartridge);
     expect(cartridge).toBeChecked();
     expect(document.documentElement).toHaveAttribute("data-theme", "cartridge");
+    expect(screen.getByText(/shared by every device/)).toBeInTheDocument();
   });
 
   it("preserves the archived disclosure while a habit detail opens and closes", async () => {

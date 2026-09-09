@@ -20,7 +20,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Unresolved past-date notifications inside the app
 - Validated import of compatible terminal/iPhone SQLite databases
 - Automatic safety backup before an imported database replaces live data
-- Responsive phone and desktop layouts with light and dark appearance
+- Responsive phone and desktop layouts with a shared skin selection; System follows each device's light or dark mode
 - Docker image and NAS Compose deployment
 
 ## Status rules
@@ -92,6 +92,11 @@ page restoration, and every 30 seconds while visible. A selection following Toda
 advances with the server day; an explicitly selected historical date stays selected.
 Open timed-entry sheets keep their original date. The server's configured IANA `TZ`
 remains authoritative even when the phone travels to another timezone.
+
+The Appearance selection is stored in the server database, so choosing a skin on
+one browser applies on all devices when they load or refresh. Selecting System is
+also shared, while its light or dark result follows the operating-system setting on
+each individual device.
 
 Daily navigation cancels obsolete reads. A pending status write disables the other
 status buttons for that habit/date and displays Saving. Reads have a 15-second

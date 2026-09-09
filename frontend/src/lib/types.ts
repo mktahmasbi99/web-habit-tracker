@@ -1,6 +1,7 @@
 export type Status = "pending" | "done" | "missed";
+export type Theme = "system" | "arcade" | "crt" | "neon" | "desert" | "cartridge";
 
-export interface Config { today: string; timezone: string }
+export interface Config { today: string; timezone: string; theme: Theme }
 export interface HabitDay {
   id: number; name: string; startDate: string; status: Status;
   currentStreak: number; hasNote: boolean;

@@ -138,6 +138,12 @@ class HabitDatabase:
                     backup_type TEXT PRIMARY KEY,
                     last_scheduled_date TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS web_app_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    theme TEXT NOT NULL DEFAULT 'system'
+                        CHECK (theme IN ('system', 'arcade', 'crt', 'neon', 'desert', 'cartridge')),
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
                 CREATE TABLE IF NOT EXISTS web_system_notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     kind TEXT NOT NULL,
@@ -251,6 +257,10 @@ class HabitDatabase:
             )
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (5)"
+            )
+            connection.execute("INSERT OR IGNORE INTO web_app_settings(id) VALUES (1)")
+            connection.execute(
+                "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (6)"
             )
             connection.execute("PRAGMA optimize")
             connection.commit()
@@ -1258,6 +1268,24 @@ class HabitDatabase:
     @property
     def backup_directory(self) -> Path:
         return self.path.parent / "backups"
+
+    def theme(self) -> str:
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT theme FROM web_app_settings WHERE id = 1"
+            ).fetchone()["theme"]
+
+    def update_theme(self, theme: str) -> str:
+        allowed = {"system", "arcade", "crt", "neon", "desert", "cartridge"}
+        if theme not in allowed:
+            raise DomainError("Choose a supported theme.")
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE web_app_settings SET theme = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1",
+                (theme,),
+            )
+            connection.commit()
+        return self.theme()
 
     def backup_settings(self) -> dict:
         with self.connect() as connection:
