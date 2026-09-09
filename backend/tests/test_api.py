@@ -35,6 +35,18 @@ def test_api_returns_consistent_domain_error(monkeypatch, tmp_path):
     assert response.json() == {"detail": "Habit names cannot be empty."}
 
 
+def test_static_assets_have_appropriate_cache_headers(monkeypatch, tmp_path):
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "static.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        assert client.get("/app-icon.png").headers["cache-control"] == "no-cache"
+        asset = next(module.FRONTEND_DIST.joinpath("assets").iterdir())
+        response = client.get(f"/assets/{asset.name}")
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
+
+
 def test_api_creates_and_lists_downloadable_backup(monkeypatch, tmp_path):
     monkeypatch.setenv("TZ", "Europe/Warsaw")
     monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "backups.sqlite3"))

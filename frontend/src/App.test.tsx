@@ -65,6 +65,17 @@ describe("Habit Tracker", () => {
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
   });
 
+  it("reuses the notification badge data when opening Alerts", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/unresolved", expect.anything()));
+    const callsBeforeOpeningAlerts = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === "/api/unresolved").length;
+    await user.click(screen.getByRole("button", { name: "Notifications, 1 unresolved dates" }));
+    expect(await screen.findByRole("heading", { name: "Notifications" })).toBeInTheDocument();
+    expect(screen.getByText("25 Aug 2026")).toBeInTheDocument();
+    expect((fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === "/api/unresolved")).toHaveLength(callsBeforeOpeningAlerts);
+  });
+
   it("toggles an activity-log Done button without daily status choices", async () => {
     activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: "2026-08-22", completed: false, hasNote: false, archived: false }];
     const user = userEvent.setup(); render(<App />);

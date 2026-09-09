@@ -249,12 +249,10 @@ function NoteHistory({ summary, onClose, reportError, openNote }: { summary: Not
   return <Modal title={summary.name} wide onClose={onClose}>{notes.length === 0 ? <EmptyState icon={<StickyNote />} title="No notes yet" detail="Add notes from Today, where you can choose a date." /> : <div className="note-history">{notes.map(note => <button key={note.date} onClick={() => openNote({ habitId: summary.id, habitName: summary.name, date: note.date, create: false, archived: summary.archived })}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div>}</Modal>;
 }
 
-function NotificationsPage({ refresh, reportError, openDate, onDataChange }: { refresh: number; reportError: (error: unknown) => void; openDate: (date: string) => void; onDataChange: () => void }) {
-  const [items, setItems] = useState<Unresolved[]>([]); const [systemItems, setSystemItems] = useState<SystemNotification[]>([]);
-  useEffect(() => { void Promise.all([api.unresolved(), api.systemNotifications()]).then(([unresolved, system]) => { setItems(unresolved); setSystemItems(system); }).catch(reportError); }, [refresh, reportError]);
+function NotificationsPage({ items, systemItems, reportError, openDate, onDataChange }: { items: Unresolved[]; systemItems: SystemNotification[]; reportError: (error: unknown) => void; openDate: (date: string) => void; onDataChange: () => void }) {
   const dismiss = async (item: SystemNotification) => {
     if (typeof item.id !== "number") return;
-    try { await api.dismissSystemNotification(item.id); setSystemItems(value => value.filter(current => current.id !== item.id)); onDataChange(); }
+    try { await api.dismissSystemNotification(item.id); onDataChange(); }
     catch (error) { reportError(error); }
   };
   return <section className="page list-page"><h1>Notifications</h1>{systemItems.length > 0 && <div className="settings-group system-notifications"><h2>System</h2>{systemItems.map(item => <div className="system-notification" key={item.id}><div><strong>{item.title}</strong><p>{item.message}</p><small>{new Date(item.createdAt).toLocaleString("en-GB")}</small></div>{typeof item.id === "number" && <button className="small-button" onClick={() => void dismiss(item)}>Dismiss</button>}</div>)}</div>}{items.length === 0 && systemItems.length === 0 ? <EmptyState icon={<BellOff />} title="No notifications" detail="All past habits are resolved and the system is running normally." /> : items.length > 0 && <div className="inset-list">{items.map(item => <button className="list-row" key={item.date} onClick={() => openDate(item.date)}><span><strong>{prettyDate(item.date)}</strong><small>{item.pendingCount} {item.pendingCount === 1 ? "habit" : "habits"} unresolved</small></span><ChevronRight /></button>)}</div>}</section>;
@@ -419,12 +417,16 @@ export default function App() {
   const initialNote = window.location.pathname.match(/^\/habits\/(\d+)\/notes\/(\d{4}-\d{2}-\d{2})$/);
   const initialTimedNote = window.location.pathname.match(/^\/timed-activities\/(\d+)\/notes\/(\d{4}-\d{2}-\d{2})$/);
   const initialLogNote = window.location.pathname.match(/^\/activity-logs\/(\d+)\/notes\/(\d{4}-\d{2}-\d{2})$/);
-  const [config, setConfig] = useState<Config | null>(null); const [tab, setTab] = useState<Tab>("today"); const [selectedDate, setSelectedDate] = useState(""); const [refresh, setRefresh] = useState(0); const [notificationCount, setNotificationCount] = useState(0); const [error, setError] = useState(""); const [detailHabitId, setDetailHabitId] = useState<number | null>(initialHabit ? Number(initialHabit) : null); const [detailTimedId, setDetailTimedId] = useState<number | null>(() => { const id = window.location.pathname.match(/^\/timed-activities\/(\d+)$/)?.[1]; return id ? Number(id) : null; }); const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(initialNote ? { habitId: Number(initialNote[1]), habitName: "", date: initialNote[2], create: false } : initialTimedNote ? { habitId: Number(initialTimedNote[1]), habitName: "", date: initialTimedNote[2], create: false, kind: "timed" } : initialLogNote ? { habitId: Number(initialLogNote[1]), habitName: "", date: initialLogNote[2], create: false, kind: "log" } : null);
+  const [config, setConfig] = useState<Config | null>(null); const [tab, setTab] = useState<Tab>("today"); const [selectedDate, setSelectedDate] = useState(""); const [refresh, setRefresh] = useState(0); const [notificationCount, setNotificationCount] = useState(0); const [notifications, setNotifications] = useState<{ items: Unresolved[]; systemItems: SystemNotification[] }>({ items: [], systemItems: [] }); const [error, setError] = useState(""); const [detailHabitId, setDetailHabitId] = useState<number | null>(initialHabit ? Number(initialHabit) : null); const [detailTimedId, setDetailTimedId] = useState<number | null>(() => { const id = window.location.pathname.match(/^\/timed-activities\/(\d+)$/)?.[1]; return id ? Number(id) : null; }); const [noteTarget, setNoteTarget] = useState<NoteTarget | null>(initialNote ? { habitId: Number(initialNote[1]), habitName: "", date: initialNote[2], create: false } : initialTimedNote ? { habitId: Number(initialTimedNote[1]), habitName: "", date: initialTimedNote[2], create: false, kind: "timed" } : initialLogNote ? { habitId: Number(initialLogNote[1]), habitName: "", date: initialLogNote[2], create: false, kind: "log" } : null);
   const reportError = useCallback((value: unknown) => {
     const message = value instanceof ApiError || value instanceof Error ? value.message : "Something went wrong.";
     setError(message); window.dispatchEvent(new CustomEvent("app-error", { detail: message }));
   }, []);
-  const refreshAll = useCallback(() => { setRefresh(value => value + 1); void Promise.all([api.unresolved(), api.systemNotifications()]).then(([items, system]) => setNotificationCount(items.length + system.length)).catch(reportError); }, [reportError]);
+  const refreshNotifications = useCallback(async () => {
+    const [items, systemItems] = await Promise.all([api.unresolved(), api.systemNotifications()]);
+    setNotifications({ items, systemItems }); setNotificationCount(items.length + systemItems.length);
+  }, []);
+  const refreshAll = useCallback(() => { setRefresh(value => value + 1); void refreshNotifications().catch(reportError); }, [refreshNotifications, reportError]);
   const serverDay = useRef("");
   const syncing = useRef(false);
   const syncConfig = useCallback(async () => {
@@ -482,7 +484,7 @@ export default function App() {
       {tab === "stats" && <StatsPage refresh={refresh} selectedDate={selectedDate} today={config.today} onDate={setSelectedDate} reportError={reportError} />}
       {tab === "notes" && <NotesPage refresh={refresh} reportError={reportError} openNote={openNote} noteOpen={noteTarget !== null} />}
       {tab === "manage" && <ManagementPage refresh={refresh} openHabit={openHabit} openTimed={openTimed} reportError={reportError} />}
-      {tab === "notifications" && <NotificationsPage refresh={refresh} reportError={reportError} openDate={openDate} onDataChange={refreshAll} />}
+      {tab === "notifications" && <NotificationsPage items={notifications.items} systemItems={notifications.systemItems} reportError={reportError} openDate={openDate} onDataChange={refreshAll} />}
       {tab === "more" && <MorePage config={config} reportError={reportError} imported={() => { void syncConfig(); }} />}
     </main>
     <nav className="tab-bar" inert={detailOpen} aria-hidden={detailOpen || undefined} aria-label="Main navigation">{tabs.map(({ id, label, Icon }) => <button key={id} className={tab === id ? "active" : ""} onClick={() => setTab(id)} aria-label={id === "notifications" && notificationCount > 0 ? `${label}, ${notificationCount} unresolved dates` : label} aria-current={tab === id ? "page" : undefined}><span className="tab-icon"><Icon />{id === "notifications" && notificationCount > 0 ? <i aria-hidden="true">{notificationCount}</i> : null}</span><span className="tab-label">{id === "notifications" ? "Alerts" : label}</span></button>)}</nav>

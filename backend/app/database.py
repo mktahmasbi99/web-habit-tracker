@@ -188,6 +188,8 @@ class HabitDatabase:
                 CREATE INDEX IF NOT EXISTS idx_timed_entries_activity_date
                     ON timed_activity_entries(activity_id, entry_date);
                 CREATE INDEX IF NOT EXISTS idx_timed_notes_date ON timed_activity_notes(note_date);
+                CREATE INDEX IF NOT EXISTS idx_timed_archive_periods_activity_dates
+                    ON timed_activity_archive_periods(activity_id, archived_at, resurrected_at);
                 CREATE TABLE IF NOT EXISTS activity_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
@@ -221,6 +223,8 @@ class HabitDatabase:
                 CREATE INDEX IF NOT EXISTS idx_activity_log_completions_date
                     ON activity_log_completions(completion_date);
                 CREATE INDEX IF NOT EXISTS idx_activity_log_notes_date ON activity_log_notes(note_date);
+                CREATE INDEX IF NOT EXISTS idx_activity_log_archive_periods_activity_dates
+                    ON activity_log_archive_periods(activity_id, archived_at, resurrected_at);
                 """
             )
             habit_columns = {
@@ -244,6 +248,9 @@ class HabitDatabase:
             )
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (4)"
+            )
+            connection.execute(
+                "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (5)"
             )
             connection.execute("PRAGMA optimize")
             connection.commit()
@@ -755,6 +762,47 @@ class HabitDatabase:
         ).fetchone()
         return bool(row[0])
 
+    @staticmethod
+    def _streaks_from_done(start: date, end: date, done: set[str]) -> list[dict]:
+        output: list[dict] = []
+        streak_start: date | None = None
+        current = start
+        while current <= end:
+            if current.isoformat() in done:
+                streak_start = streak_start or current
+            elif streak_start:
+                output.append(HabitDatabase._streak(streak_start, current - timedelta(days=1)))
+                streak_start = None
+            current += timedelta(days=1)
+        if streak_start:
+            output.append(HabitDatabase._streak(streak_start, end))
+        return sorted(output, key=lambda item: (-item["length"], item["startDate"]))
+
+    @staticmethod
+    def _current_streak_from_done(start: date, through: date, done: set[str]) -> int:
+        current = through if through.isoformat() in done else through - timedelta(days=1)
+        length = 0
+        while current >= start and current.isoformat() in done:
+            length += 1
+            current -= timedelta(days=1)
+        return length
+
+    def _done_logs_for(
+        self, connection: sqlite3.Connection, habit_ids: list[int], through: str
+    ) -> dict[int, set[str]]:
+        if not habit_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in habit_ids)
+        rows = connection.execute(
+            f"""SELECT habit_id, log_date FROM habit_logs
+                WHERE status = 'done' AND log_date <= ? AND habit_id IN ({placeholders})""",
+            (through, *habit_ids),
+        ).fetchall()
+        output = {habit_id: set() for habit_id in habit_ids}
+        for row in rows:
+            output[row["habit_id"]].add(row["log_date"])
+        return output
+
     def habits_on(self, day_value: str) -> list[dict]:
         day = self.parse_day(day_value).isoformat()
         with self.connect() as connection:
@@ -769,14 +817,16 @@ class HabitDatabase:
                 ORDER BY h.start_date, h.name, h.id""",
                 (day, day, day, day, day),
             ).fetchall()
-        return [
-            {
-                "id": row["id"], "name": row["name"], "startDate": row["start_date"],
-                "status": row["status"], "currentStreak": self.current_streak(row["id"], day),
-                "hasNote": bool(row["has_note"]),
-            }
-            for row in rows
-        ]
+            done_by_habit = self._done_logs_for(connection, [row["id"] for row in rows], day)
+        selected = date.fromisoformat(day)
+        return [{
+            "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+            "status": row["status"],
+            "currentStreak": self._current_streak_from_done(
+                date.fromisoformat(row["start_date"]), selected, done_by_habit[row["id"]]
+            ),
+            "hasNote": bool(row["has_note"]),
+        } for row in rows]
 
     def habit_summaries(self) -> list[dict]:
         with self.connect() as connection:
@@ -815,14 +865,29 @@ class HabitDatabase:
         return {"startDate": latest["startDate"], "endDate": latest["endDate"]}
 
     def habit_detail(self, habit_id: int) -> dict:
-        summary = next((item for item in self.habit_summaries() if item["id"] == habit_id), None)
-        if summary is None:
-            raise DomainError("Habit not found.")
-        through = summary["archivedAt"] or self.today().isoformat()
-        streaks = self.streaks_in_range(habit_id, summary["startDate"], through)
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT h.id, h.name, h.start_date, h.archived_at, COUNT(n.habit_id) AS note_count
+                   FROM habits h LEFT JOIN habit_notes n ON n.habit_id = h.id
+                   WHERE h.id = ?
+                   GROUP BY h.id, h.name, h.start_date, h.archived_at""",
+                (habit_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("Habit not found.")
+            through = row["archived_at"] or self.today().isoformat()
+            done = self._done_logs_for(connection, [habit_id], through)[habit_id]
+        start = date.fromisoformat(row["start_date"])
+        end = date.fromisoformat(through)
+        streaks = self._streaks_from_done(start, end, done)
+        summary = {
+            "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+            "archived": row["archived_at"] is not None, "archivedAt": row["archived_at"],
+            "latestActiveRange": self._latest_active_range(habit_id), "noteCount": row["note_count"],
+        }
         return {
             **summary,
-            "currentStreak": self._current_streak_in_range(habit_id, summary["startDate"], through, streaks),
+            "currentStreak": self._current_streak_from_done(start, end, done),
             "longestStreak": streaks[0] if streaks else None,
             "streaks": streaks,
         }
@@ -887,16 +952,33 @@ class HabitDatabase:
                 """SELECT id, archived_at, resurrected_at FROM habit_archive_periods
                    WHERE habit_id = ? ORDER BY archived_at, id""", (habit_id,)
             ).fetchall()
+            active_rows = []
+            for row in rows:
+                active_rows.append(row)
+                if row["resurrected_at"] is None:
+                    break
+            if not active_rows:
+                return []
+            done = self._done_logs_for(connection, [habit_id], active_rows[-1]["archived_at"])[habit_id]
+            notes = connection.execute(
+                """SELECT note_date, body FROM habit_notes
+                   WHERE habit_id = ? AND note_date BETWEEN ? AND ? ORDER BY note_date DESC""",
+                (habit_id, habit["start_date"], active_rows[-1]["archived_at"]),
+            ).fetchall()
         start = habit["start_date"]
         periods = []
-        for index, row in enumerate(rows, start=1):
+        for index, row in enumerate(active_rows, start=1):
             end = row["archived_at"]
-            streaks = self.streaks_in_range(habit_id, start, end)
+            start_day, end_day = date.fromisoformat(start), date.fromisoformat(end)
+            streaks = self._streaks_from_done(start_day, end_day, done)
             periods.append({
                 "id": row["id"], "number": index, "startDate": start, "endDate": end,
-                "currentStreak": self._current_streak_in_range(habit_id, start, end, streaks),
+                "currentStreak": self._current_streak_from_done(start_day, end_day, done),
                 "longestStreak": streaks[0] if streaks else None, "streaks": streaks,
-                "notes": self.notes_for_range(habit_id, start, end),
+                "notes": [{
+                    "habitId": habit_id, "habitName": habit["name"],
+                    "date": note["note_date"], "body": note["body"],
+                } for note in notes if start <= note["note_date"] <= end],
             })
             if row["resurrected_at"] is None:
                 break
@@ -918,24 +1000,8 @@ class HabitDatabase:
         start, end = self.parse_day(start_value), self.parse_day(end_value)
         with self.connect() as connection:
             self._habit_row(connection, habit_id)
-            rows = connection.execute(
-                """SELECT log_date FROM habit_logs
-                   WHERE habit_id = ? AND status = 'done' AND log_date BETWEEN ? AND ?""",
-                (habit_id, start.isoformat(), end.isoformat()),
-            ).fetchall()
-        done = {row["log_date"] for row in rows}
-        output, streak_start = [], None
-        current = start
-        while current <= end:
-            if current.isoformat() in done:
-                streak_start = streak_start or current
-            elif streak_start:
-                output.append(self._streak(streak_start, current - timedelta(days=1)))
-                streak_start = None
-            current += timedelta(days=1)
-        if streak_start:
-            output.append(self._streak(streak_start, end))
-        return sorted(output, key=lambda item: (-item["length"], item["startDate"]))
+            done = self._done_logs_for(connection, [habit_id], end.isoformat())[habit_id]
+        return self._streaks_from_done(start, end, done)
 
     def _current_streak_in_range(self, habit_id: int, start: str, end: str, streaks: list[dict]) -> int:
         with self.connect() as connection:
@@ -1030,26 +1096,8 @@ class HabitDatabase:
             if habit is None:
                 raise DomainError("Habit not found.")
             start_date = date.fromisoformat(habit["start_date"])
-            rows = connection.execute(
-                """SELECT log_date FROM habit_logs
-                   WHERE habit_id = ? AND status = 'done' AND log_date BETWEEN ? AND ?""",
-                (habit_id, start_date.isoformat(), through.isoformat()),
-            ).fetchall()
-        done = {row["log_date"] for row in rows}
-        output: list[dict] = []
-        streak_start: date | None = None
-        current = start_date
-        while current <= through:
-            if current.isoformat() in done:
-                streak_start = streak_start or current
-            elif streak_start:
-                end = current - timedelta(days=1)
-                output.append(self._streak(streak_start, end))
-                streak_start = None
-            current += timedelta(days=1)
-        if streak_start:
-            output.append(self._streak(streak_start, through))
-        return sorted(output, key=lambda item: (-item["length"], item["startDate"]))
+            done = self._done_logs_for(connection, [habit_id], through.isoformat())[habit_id]
+        return self._streaks_from_done(start_date, through, done)
 
     @staticmethod
     def _streak(start: date, end: date) -> dict:
@@ -1082,12 +1130,16 @@ class HabitDatabase:
             note_counts = dict(connection.execute(
                 "SELECT habit_id, COUNT(*) count FROM habit_notes GROUP BY habit_id"
             ).fetchall())
+            done_by_habit = self._done_logs_for(connection, [habit["id"] for habit in habits], through)
         output = []
         for habit in habits:
-            streaks = self.streaks(habit["id"], through)
+            start = date.fromisoformat(habit["start_date"])
+            end = date.fromisoformat(through)
+            done = done_by_habit[habit["id"]]
+            streaks = self._streaks_from_done(start, end, done)
             output.append({
                 "id": habit["id"], "name": habit["name"], "startDate": habit["start_date"],
-                "currentStreak": self.current_streak(habit["id"], through),
+                "currentStreak": self._current_streak_from_done(start, end, done),
                 "longestStreak": streaks[0] if streaks else None, "streaks": streaks,
                 "noteCount": note_counts.get(habit["id"], 0),
             })
@@ -1099,17 +1151,30 @@ class HabitDatabase:
         except ValueError as exc:
             raise DomainError("Month must use YYYY-MM.") from exc
         next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
-        output = []
-        current = month_start
-        while current < next_month:
-            habits = self.habits_on(current.isoformat())
-            output.append({
-                "date": current.isoformat(),
-                "done": sum(item["status"] == "done" for item in habits),
-                "missed": sum(item["status"] == "missed" for item in habits),
-            })
-            current += timedelta(days=1)
-        return output
+        with self.connect() as connection:
+            rows = connection.execute(
+                """WITH RECURSIVE dates(day) AS (
+                       VALUES (?)
+                       UNION ALL SELECT date(day, '+1 day') FROM dates WHERE day < date(?, '-1 day')
+                   ), active_habits AS (
+                       SELECT dates.day, h.id
+                       FROM dates JOIN habits h ON h.start_date <= dates.day
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM habit_archive_periods ap
+                           WHERE ap.habit_id = h.id AND ap.archived_at < dates.day
+                             AND (ap.resurrected_at IS NULL OR ap.resurrected_at > dates.day)
+                       )
+                   )
+                   SELECT dates.day AS date,
+                          COALESCE(SUM(CASE WHEN l.status = 'done' THEN 1 ELSE 0 END), 0) AS done,
+                          COALESCE(SUM(CASE WHEN l.status = 'missed' THEN 1 ELSE 0 END), 0) AS missed
+                   FROM dates
+                   LEFT JOIN active_habits ah ON ah.day = dates.day
+                   LEFT JOIN habit_logs l ON l.habit_id = ah.id AND l.log_date = dates.day
+                   GROUP BY dates.day ORDER BY dates.day""",
+                (month_start.isoformat(), next_month.isoformat()),
+            ).fetchall()
+        return [{"date": row["date"], "done": row["done"], "missed": row["missed"]} for row in rows]
 
     def unresolved(self) -> list[dict]:
         today = self.today()
@@ -1119,14 +1184,31 @@ class HabitDatabase:
             ).fetchone()
         if not row or not row["earliest"]:
             return []
-        current = date.fromisoformat(row["earliest"])
-        output = []
-        while current < today:
-            pending = sum(item["status"] == "pending" for item in self.habits_on(current.isoformat()))
-            if pending:
-                output.append({"date": current.isoformat(), "pendingCount": pending})
-            current += timedelta(days=1)
-        return list(reversed(output))
+        if row["earliest"] >= today.isoformat():
+            return []
+        with self.connect() as connection:
+            rows = connection.execute(
+                """WITH RECURSIVE dates(day) AS (
+                       VALUES (?)
+                       UNION ALL SELECT date(day, '+1 day') FROM dates WHERE day < date(?, '-1 day')
+                   ), active_habits AS (
+                       SELECT dates.day, h.id
+                       FROM dates JOIN habits h ON h.start_date <= dates.day
+                       WHERE NOT EXISTS (
+                           SELECT 1 FROM habit_archive_periods ap
+                           WHERE ap.habit_id = h.id AND ap.archived_at < dates.day
+                             AND (ap.resurrected_at IS NULL OR ap.resurrected_at > dates.day)
+                       )
+                   )
+                   SELECT dates.day AS date, COUNT(ah.id) - COUNT(l.habit_id) AS pending_count
+                   FROM dates
+                   LEFT JOIN active_habits ah ON ah.day = dates.day
+                   LEFT JOIN habit_logs l ON l.habit_id = ah.id AND l.log_date = dates.day
+                   GROUP BY dates.day HAVING pending_count > 0
+                   ORDER BY dates.day DESC""",
+                (row["earliest"], today.isoformat()),
+            ).fetchall()
+        return [{"date": row["date"], "pendingCount": row["pending_count"]} for row in rows]
 
     def note_summaries(self) -> list[dict]:
         with self.connect() as connection:

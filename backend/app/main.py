@@ -28,6 +28,13 @@ settings = load_settings()
 database = HabitDatabase(settings)
 
 
+class ImmutableStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 async def backup_scheduler() -> None:
     while True:
         try:
@@ -371,11 +378,14 @@ async def import_database(
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if FRONTEND_DIST.is_dir():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+    app.mount("/assets", ImmutableStaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     def spa_fallback(full_path: str) -> FileResponse:
         candidate = FRONTEND_DIST / full_path
         if candidate.is_file():
-            return FileResponse(candidate)
+            response = FileResponse(candidate)
+            if candidate.name == "app-icon.png":
+                response.headers["Cache-Control"] = "no-cache"
+            return response
         return FileResponse(FRONTEND_DIST / "index.html")

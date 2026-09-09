@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Speed up historical calendars, unresolved notifications, streak statistics, and archived-habit history with batched SQLite reads and set-based date queries; cache hashed frontend assets and shrink the startup icon.
+
 - Start timed-entry inputs empty with a zero placeholder, and accept total minutes through 24 hours before normalizing them into hours and minutes.
 
 - Replace the browser-managed activity Type dropdown with large in-sheet radio choices and shorten “Daily habit (done or missed)” to “Daily habit”.

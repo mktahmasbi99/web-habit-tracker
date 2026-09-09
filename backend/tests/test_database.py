@@ -74,6 +74,26 @@ def test_unresolved_only_contains_past_pending_dates(store):
     assert store.unresolved() == [{"date": start.isoformat(), "pendingCount": 1}]
 
 
+def test_month_and_unresolved_respect_archived_gaps(store):
+    today = store.today()
+    start = today - timedelta(days=4)
+    archived = today - timedelta(days=3)
+    restored = today - timedelta(days=1)
+    habit = store.create_habit("Read", start.isoformat())
+    with store.connect() as connection, connection:
+        connection.execute(
+            "INSERT INTO habit_archive_periods(habit_id, archived_at, resurrected_at) VALUES (?, ?, ?)",
+            (habit["id"], archived.isoformat(), restored.isoformat()),
+        )
+    for day in (start, archived, restored):
+        store.set_status(habit["id"], day.isoformat(), "pending")
+    unresolved_dates = {item["date"] for item in store.unresolved()}
+    assert {start.isoformat(), archived.isoformat(), restored.isoformat()}.issubset(unresolved_dates)
+    assert (archived + timedelta(days=1)).isoformat() not in unresolved_dates
+    summary = {item["date"]: item for item in store.month_summary(today.strftime("%Y-%m"))}
+    assert summary[archived.isoformat()] == {"date": archived.isoformat(), "done": 0, "missed": 0}
+
+
 def test_notes_and_statistics(store):
     today = store.today().isoformat()
     habit = store.create_habit("Journal", today)

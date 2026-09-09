@@ -27,6 +27,9 @@ packages = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+  "performance: repeatable long-history performance regression checks",
+]
 
 [tool.ruff]
 line-length = 100
