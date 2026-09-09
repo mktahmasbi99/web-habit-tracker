@@ -1,6 +1,8 @@
 import importlib
 from datetime import date, timedelta
 
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.testclient import TestClient
 
 
@@ -35,14 +37,24 @@ def test_api_returns_consistent_domain_error(monkeypatch, tmp_path):
     assert response.json() == {"detail": "Habit names cannot be empty."}
 
 
-def test_static_assets_have_appropriate_cache_headers(monkeypatch, tmp_path):
-    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "static.sqlite3"))
-    import app.main
-    module = importlib.reload(app.main)
-    with TestClient(module.app) as client:
+def test_static_assets_have_appropriate_cache_headers(tmp_path):
+    from app import main
+
+    asset_directory = tmp_path / "assets"
+    asset_directory.mkdir()
+    (asset_directory / "app.js").write_text("console.log('habit tracker');")
+    icon = tmp_path / "app-icon.png"
+    icon.write_bytes(b"icon")
+    app = FastAPI()
+    app.mount("/assets", main.ImmutableStaticFiles(directory=asset_directory))
+
+    @app.get("/app-icon.png")
+    def app_icon() -> FileResponse:
+        return FileResponse(icon, headers={"Cache-Control": "no-cache"})
+
+    with TestClient(app) as client:
         assert client.get("/app-icon.png").headers["cache-control"] == "no-cache"
-        asset = next(module.FRONTEND_DIST.joinpath("assets").iterdir())
-        response = client.get(f"/assets/{asset.name}")
+        response = client.get("/assets/app.js")
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
 

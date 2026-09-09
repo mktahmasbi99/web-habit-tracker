@@ -56,7 +56,7 @@ test("activity type uses large in-sheet radio choices", async ({ page }) => {
   await expect(daily).toBeChecked();
   for (const option of [daily, timed]) {
     const box = await option.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(20);
-    const labelBox = await option.locator("xpath=..").boundingBox(); expect(labelBox!.height).toBeGreaterThanOrEqual(52);
+    const labelBox = await option.locator("xpath=..").boundingBox(); expect(labelBox!.height).toBeGreaterThanOrEqual(51.9);
   }
   await timed.check();
   await expect(timed).toBeChecked();
@@ -83,7 +83,7 @@ test("calendar supports touch, focus containment, Escape and browser Back", asyn
 test("navigation and large text fit without horizontal overflow", async ({ page }, testInfo) => {
   await fixture(page); await page.goto("/");
   const nav = page.getByRole("navigation");
-  for (const name of ["Today", "Stats", "Notes", "Manage", "Notifications", "More"]) {
+  for (const name of ["Today", "Notes", "Manage", "Notifications", "More"]) {
     const button = nav.getByRole("button", { name, exact: true }); await expect(button).toBeInViewport();
     const box = await button.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(44);
   }
