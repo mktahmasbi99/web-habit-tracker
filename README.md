@@ -1,5 +1,7 @@
 # web-habit-tracker
 
+**NOTE: THIS PROJECT IS VIBE CODED AND MAINLY EXISTS TO SCRATCH A PERSONAL ITCH.**
+
 `web-habit-tracker` is a private, single-user habit tracker for a NAS. It is the canonical successor to the discontinued SwiftUI `iHabitTracker` app and the legacy `terminal-habit-tracker` project.
 
 The interface is mobile-first and keeps the iPhone app's visual language: system-style light and dark colors, rounded grouped surfaces, a blue accent, and green/orange/red habit states. All browsers use one SQLite database stored on the server.

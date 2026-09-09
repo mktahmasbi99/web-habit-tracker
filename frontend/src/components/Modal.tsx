@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 import { lockScroll } from "../hooks/scrollLock";
 import { useSheetHistory } from "../hooks/useSheetHistory";
 
-export default function Modal({ title, titleDetail, children, onClose, wide = false, actions }: {
-  title: string; titleDetail?: ReactNode; children: ReactNode; onClose: () => void; wide?: boolean; actions?: ReactNode;
+export default function Modal({ title, titleDetail, titleEditor, children, onClose, wide = false, actions }: {
+  title: string; titleDetail?: ReactNode; titleEditor?: ReactNode; children: ReactNode; onClose: () => void; wide?: boolean; actions?: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
@@ -47,7 +47,7 @@ export default function Modal({ title, titleDetail, children, onClose, wide = fa
     onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className={`modal ${wide ? "modal-wide" : ""}`}>
-      <header className="modal-head"><h2>{title}{titleDetail}</h2><div className="modal-head-actions">{actions}<button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div></header>
+      <header className="modal-head"><h2>{titleEditor ?? <>{title}{titleDetail}</>}</h2><div className="modal-head-actions">{actions}<button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div></header>
       <div className="modal-body">{error && <div className="inline-error" role="alert"><span>{error}</span><button className="small-button" onClick={() => setError("")}>Dismiss error</button></div>}{children}</div>
     </section>
   </dialog>, document.body);

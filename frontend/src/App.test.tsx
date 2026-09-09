@@ -156,6 +156,30 @@ describe("Habit Tracker", () => {
     });
   });
 
+  it("replaces the timed activity title with its focused editor", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 90, weekMinutes: 90, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("button", { name: "Edit timed activity" }));
+    const name = screen.getByRole("textbox", { name: "Activity name" });
+    expect(name).toHaveFocus();
+    expect(name).toHaveValue("Study");
+    expect(screen.queryByRole("heading", { name: "Study" })).not.toBeInTheDocument();
+  });
+
+  it("replaces the activity-log title with its focused editor", async () => {
+    const user = userEvent.setup();
+    activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: null, completed: false, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Change vase water" }));
+    await user.click(screen.getByRole("button", { name: "Edit activity log" }));
+    const name = screen.getByRole("textbox", { name: "Activity name" });
+    expect(name).toHaveFocus();
+    expect(name).toHaveValue("Change vase water");
+    expect(screen.queryByRole("heading", { name: "Change vase water" })).not.toBeInTheDocument();
+  });
+
   it("refreshes the Today card after renaming a daily habit", async () => {
     const user = userEvent.setup(); render(<App />);
     await user.click(await screen.findByRole("button", { name: "Open Read" }));
