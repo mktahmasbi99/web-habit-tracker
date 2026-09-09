@@ -16,6 +16,7 @@ let activityLogs: unknown[];
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
+    document.documentElement.dataset.theme = "";
     noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "", exists: false, archived: false };
     noteSummaries = [];
     habitNotes = [];
@@ -297,6 +298,33 @@ describe("Habit Tracker", () => {
     expect(screen.getByRole("heading", { name: "Server time" })).toBeInTheDocument();
     expect(screen.getByText(/timezone comes from the server/)).toBeInTheDocument();
     expect(screen.getByText("Europe/Warsaw")).toBeInTheDocument();
+  });
+
+  it("switches between the experimental retro themes", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    const arcade = await screen.findByRole("radio", { name: "16-bit Arcade" });
+    expect(screen.getByRole("radio", { name: "System" })).toBeChecked();
+    await user.click(arcade);
+    expect(arcade).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "arcade");
+    const crt = screen.getByRole("radio", { name: "CRT Fighter" });
+    await user.click(crt);
+    expect(crt).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "crt");
+    const neon = screen.getByRole("radio", { name: "Neon Brawler" });
+    await user.click(neon);
+    expect(neon).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "neon");
+    const desert = screen.getByRole("radio", { name: "Desert Quest" });
+    await user.click(desert);
+    expect(desert).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "desert");
+    const cartridge = screen.getByRole("radio", { name: "Cartridge Mode" });
+    await user.click(cartridge);
+    expect(cartridge).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "cartridge");
   });
 
   it("preserves the archived disclosure while a habit detail opens and closes", async () => {
