@@ -6,6 +6,9 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Remove the redundant Stats tab. Daily streak details remain in each habit sheet while the current streak stays beside the fire icon on Today; selected-day timed weekly statistics now appear in each activity sheet.
+- Keep activity-log note access on the activity card, removing the duplicate note action from its calendar sheet.
+
 - Speed up historical calendars, unresolved notifications, streak statistics, and archived-habit history with batched SQLite reads and set-based date queries; cache hashed frontend assets and shrink the startup icon.
 
 - Start timed-entry inputs empty with a zero placeholder, and accept total minutes through 24 hours before normalizing them into hours and minutes.

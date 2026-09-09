@@ -49,7 +49,6 @@ describe("Habit Tracker", () => {
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/activity-logs$/.test(url)) return ok(activityLogs);
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok(timedActivities);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
-      if (url === "/api/statistics") return ok([]);
       if (url === "/api/notes") return ok(noteSummaries);
       if (url === "/api/habits/1/notes") return ok(habitNotes);
       return ok({}, 204);
@@ -115,6 +114,18 @@ describe("Habit Tracker", () => {
     const entries = screen.getByRole("heading", { name: "Entries" });
     expect(hours.compareDocumentPosition(entries) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector(".timed-title-total")).toHaveTextContent("1h 30m");
+  });
+
+  it("keeps daily streaks glanceable and places timed statistics in the activity sheet", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 90, weekMinutes: 90, hasNote: false, archived: false }];
+    render(<App />);
+    expect(await screen.findByText("0 streak")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Stats" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open Study" }));
+    expect(await screen.findByRole("heading", { name: "Weekly statistics" })).toBeInTheDocument();
+    expect(screen.getByText("Week through this day")).toBeInTheDocument();
+    expect(screen.getAllByText("1h 30m").length).toBeGreaterThanOrEqual(2);
   });
 
   it("starts duration fields empty and converts total minutes into hours and minutes", async () => {
