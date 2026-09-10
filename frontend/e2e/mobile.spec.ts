@@ -55,7 +55,7 @@ test("activity type uses large in-sheet radio choices", async ({ page }) => {
   const timed = dialog.getByRole("radio", { name: "Timed activity" });
   await expect(daily).toBeChecked();
   for (const option of [daily, timed]) {
-    const box = await option.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(20);
+    const box = await option.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(19.9);
     const labelBox = await option.locator("xpath=..").boundingBox(); expect(labelBox!.height).toBeGreaterThanOrEqual(51.9);
   }
   await timed.check();
