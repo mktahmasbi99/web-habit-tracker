@@ -95,6 +95,28 @@ The installable PWA remains server-backed and requires connectivity to the NAS t
 
 MIT
 
+## Themes
+
+The Appearance selection is stored in the server database, so choosing a skin on
+one browser applies on all devices when they load or refresh. Selecting System is
+also shared, while its light or dark result follows the operating-system setting on
+each individual device.
+
+Noir Rain and Pixel Sunset are the two artwork-backed themes, using the bundled
+rainy-city and pixel-ocean scenes as subtle fixed backdrops behind readable surfaces.
+
+| Noir Rain — desktop | Pixel Sunset — desktop |
+| --- | --- |
+| ![Noir Rain theme on desktop](docs/screenshots/noir-rain-desktop.png) | ![Pixel Sunset theme on desktop](docs/screenshots/pixel-sunset-desktop.png) |
+
+| Noir Rain — phone | Pixel Sunset — phone |
+| --- | --- |
+| ![Noir Rain theme on a phone](docs/screenshots/noir-rain-phone.png) | ![Pixel Sunset theme on a phone](docs/screenshots/pixel-sunset-phone.png) |
+
+Have an idea for another theme? Contributions are welcome—bring an original visual
+direction that keeps text readable, controls accessible, and the app comfortable to
+use on both phones and desktops.
+
 ## Phone behavior and verification
 
 The app refreshes the server date and notification count on foregrounding, reconnection,
@@ -104,14 +126,6 @@ position. A selection following Today advances with the server day; an explicitl
 selected historical date stays selected.
 Open timed-entry sheets keep their original date. The server's configured IANA `TZ`
 remains authoritative even when the phone travels to another timezone.
-
-The Appearance selection is stored in the server database, so choosing a skin on
-one browser applies on all devices when they load or refresh. Selecting System is
-also shared, while its light or dark result follows the operating-system setting on
-each individual device.
-
-Noir Rain and Pixel Sunset are the two artwork-backed themes, using the bundled
-rainy-city and pixel-ocean scenes as subtle fixed backdrops behind readable surfaces.
 
 Daily navigation cancels obsolete reads. A pending status write disables the other
 status buttons for that habit/date and displays Saving. Reads have a 15-second
