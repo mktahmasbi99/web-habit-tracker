@@ -82,7 +82,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
       const [daily, activities, logs] = await Promise.all([api.habits(selectedDate, controller.signal), api.timedActivities(selectedDate, controller.signal), api.activityLogs(selectedDate, controller.signal)]);
       if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); }
     } catch (error) { if (!controller.signal.aborted) { setLoadError(true); reportError(error); } }
-    finally { if (!controller.signal.aborted && !preserveContent) setLoading(false); }
+    finally { if (!controller.signal.aborted) setLoading(false); }
   }, [selectedDate, reportError]);
   useEffect(() => { void load(); return () => read.current?.abort(); }, [load, refresh]);
   useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
