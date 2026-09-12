@@ -53,7 +53,18 @@ Open `http://localhost:8000`.
 docker compose -f deploy/docker-compose.nas.yml up -d
 ```
 
-Open `http://<nas-tailscale-name-or-ip>:8000`. Tailscale controls private-network access; the app intentionally has no account or login. Runtime data lives in the mounted `data/` directory and survives restarts and upgrades.
+Open `http://<nas-tailscale-name-or-ip>:8000` for ordinary browser access. Tailscale controls private-network access; the app intentionally has no account or login. Runtime data lives in the mounted `data/` directory and survives restarts and upgrades.
+
+For an installable iPhone, iPad, or Android app, expose the same private service through Tailscale Serve HTTPS on the NAS host:
+
+```sh
+tailscale serve --bg 8000
+tailscale serve status
+```
+
+Open the reported `https://<node>.<tailnet>.ts.net` address on the phone. On iPhone or iPad, use Safari’s Share → Add to Home Screen action. On Android, use **Install Habit Tracker** under More when Chrome makes the install prompt available. Tailscale Serve remains limited to the tailnet; do not use Tailscale Funnel for this app.
+
+The installed app caches only its static application shell. Habit data, activity data, notes, settings, and edits always require a live connection to this server and are never cached or queued for later synchronization.
 
 The deployer controls the calendar timezone through `TZ`. Compose uses `Europe/Warsaw` only when `TZ` is absent. See [deploy/README.md](deploy/README.md).
 
@@ -74,12 +85,11 @@ Imported data becomes authoritative. There is no synchronization with either leg
 ## Roadmap
 
 - Challenges with inclusive dates and progress
-- Installable Progressive Web App packaging for iPhone and desktop
 - Carefully scoped browser push notifications
 - User-configurable server timezone changes with explicit date-boundary behavior
 - Custom schedules and non-duration measurements only after their behavior is specified
 
-PWA support will remain server-backed and require connectivity to the NAS through Tailscale; Tailscale Serve HTTPS is the preferred future setup.
+The installable PWA remains server-backed and requires connectivity to the NAS through Tailscale. HTTPS is required for installation on supported browsers.
 
 ## License
 

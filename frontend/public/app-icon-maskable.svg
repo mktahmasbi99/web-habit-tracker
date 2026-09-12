@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title">
+  <title id="title">Habit Tracker</title>
+  <defs>
+    <radialGradient id="background" cx="34%" cy="28%" r="90%">
+      <stop offset="0" stop-color="#168cff"/>
+      <stop offset="1" stop-color="#006bea"/>
+    </radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#004cae" flood-opacity=".42"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#background)"/>
+  <g transform="translate(102.4 102.4) scale(.8)">
+    <g filter="url(#shadow)">
+      <path fill="#61e92f" d="M584 383c43-137 143-195 302-226 4 157-26 267-135 324-54 28-112 24-151 4 61-75 130-135 208-187-87 44-157 96-224 166-14-25-15-52 0-81Z"/>
+      <path fill="#61e92f" d="M511 466c-56-82-128-104-225-94 31 98 81 157 163 168 42 6 79-8 101-30-54-38-111-66-172-84 67 11 124 32 179 65 2-20-13-43-46-25Z"/>
+      <path fill="#fff" d="M255 598a48 48 0 0 1 68 0l115 115 266-315a48 48 0 1 1 73 62L478 813a56 56 0 0 1-82 4L255 676a55 55 0 0 1 0-78Z"/>
+    </g>
+  </g>
+</svg>

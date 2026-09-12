@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add installable iOS and Android PWA packaging with platform-specific setup guidance, scalable Home Screen icons, safe-area-aware standalone display, static-shell-only caching, explicit offline status, private Tailscale Serve HTTPS deployment, and user-controlled frontend updates.
+
 - Keep System, Noir Rain, and Pixel Sunset as the only Appearance themes; retired selections automatically revert to System during migration.
 
 - Store the Appearance selection in the server database so all devices share a chosen skin; the shared System choice continues to follow each device's own light or dark mode.

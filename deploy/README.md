@@ -10,6 +10,7 @@ The NAS pulls a ready-built image. Source code does not need to live on the NAS.
 4. Define `TZ` in the NAS Compose environment using an IANA name, for example `Europe/Warsaw`. If omitted, Compose defaults to `Europe/Warsaw`.
 5. Start the stack in OpenMediaVault Compose.
 6. Open `http://<nas-tailscale-name-or-ip>:8000` from a device connected to the tailnet.
+7. For PWA installation, configure private HTTPS on the NAS host with `tailscale serve --bg 8000`, confirm the generated address with `tailscale serve status`, and open that `https://<node>.<tailnet>.ts.net` address on the phone.
 
 The `TZ` setting defines the habit tracker's day for every browser. Changing the phone or computer's local timezone does not change when the app considers a new day to have started.
 
@@ -25,5 +26,6 @@ Back up the entire `data/` directory with the normal NAS backup system. The app 
 
 ## Tailscale
 
-No router port forwarding is needed. Limit access with your tailnet ACLs. V1 intentionally uses HTTP within the encrypted Tailscale tunnel and has no application login. Tailscale Serve HTTPS is recommended when installable PWA support is added later.
+No router port forwarding is needed. Limit access with your tailnet ACLs. Direct HTTP within the encrypted Tailscale tunnel remains available and the app has no application login. PWA installation requires the private HTTPS address provided by Tailscale Serve; do not use Tailscale Funnel, which would expose the app publicly.
 
+The PWA caches its static shell and icons only. All API traffic remains network-only, so the installed app must be connected to this NAS through Tailscale to view current data or save changes.

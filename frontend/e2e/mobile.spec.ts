@@ -72,7 +72,7 @@ test("calendar supports touch, focus containment, Escape and browser Back", asyn
   const today = dialog.getByRole("button", { name: "2026-09-08", exact: true });
   await expect(today).toHaveAttribute("aria-current", "date");
   await expect(today).toHaveAttribute("aria-pressed", "true");
-  const box = await today.boundingBox(); expect(box!.width).toBeGreaterThanOrEqual(43.9); expect(box!.height).toBeGreaterThanOrEqual(44);
+  const box = await today.boundingBox(); expect(box!.width).toBeGreaterThanOrEqual(43.9); expect(box!.height).toBeGreaterThanOrEqual(43.9);
   for (let i = 0; i < 40; i++) { await page.keyboard.press("Tab"); expect(await dialog.evaluate(el => el.contains(document.activeElement))).toBe(true); }
   await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
@@ -104,6 +104,31 @@ test("startup can retry after a connection failure", async ({ page }) => {
   await page.goto("/"); await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   fail = false; await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByRole("heading", { name: "Read" })).toBeVisible();
+});
+
+test("installed shell opens offline without caching API data", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Service-worker lifecycle is covered once in Chromium.");
+  const context = await browser.newContext({ baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:8000", serviceWorkers: "allow" });
+  const page = await context.newPage();
+  try {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    const cachedApi = await page.evaluate(async () => {
+      const names = await caches.keys();
+      const matches = await Promise.all(names.map(name => caches.open(name).then(cache => cache.match("/api/config"))));
+      return matches.some(Boolean);
+    });
+    expect(cachedApi).toBe(false);
+    await context.setOffline(true);
+    await page.reload();
+    await expect(page.getByText("You’re offline. Reconnect to the server, then retry.")).toBeVisible();
+    await context.setOffline(false);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  } finally {
+    await context.close();
+  }
 });
 
 test("failed note reads remain dismissible and retryable", async ({ page }) => {

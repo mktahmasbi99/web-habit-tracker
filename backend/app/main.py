@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,12 +27,13 @@ from .schemas import (
 
 settings = load_settings()
 database = HabitDatabase(settings)
+IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
 
 class ImmutableStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        response.headers["Cache-Control"] = IMMUTABLE_CACHE_CONTROL
         return response
 
 
@@ -57,6 +58,14 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="web-habit-tracker API", version="1.0.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def prevent_api_caching(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.exception_handler(DomainError)
@@ -387,6 +396,30 @@ async def import_database(
 
 
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+REVALIDATED_FRONTEND_FILES = {
+    "app-icon.png",
+    "app-icon.svg",
+    "app-icon-maskable.svg",
+    "apple-touch-icon.png",
+    "index.html",
+    "manifest.webmanifest",
+    "pwa-192x192.png",
+    "pwa-512x512.png",
+    "pwa-maskable-512x512.png",
+    "registerSW.js",
+    "sw.js",
+}
+
+
+def frontend_file_response(path: Path) -> FileResponse:
+    response = FileResponse(path)
+    if path.name.startswith("workbox-") and path.suffix == ".js":
+        response.headers["Cache-Control"] = IMMUTABLE_CACHE_CONTROL
+    elif path.name in REVALIDATED_FRONTEND_FILES:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 if FRONTEND_DIST.is_dir():
     app.mount("/assets", ImmutableStaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
@@ -394,8 +427,5 @@ if FRONTEND_DIST.is_dir():
     def spa_fallback(full_path: str) -> FileResponse:
         candidate = FRONTEND_DIST / full_path
         if candidate.is_file():
-            response = FileResponse(candidate)
-            if candidate.name == "app-icon.png":
-                response.headers["Cache-Control"] = "no-cache"
-            return response
-        return FileResponse(FRONTEND_DIST / "index.html")
+            return frontend_file_response(candidate)
+        return frontend_file_response(FRONTEND_DIST / "index.html")

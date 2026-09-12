@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -64,6 +64,16 @@ describe("Habit Tracker", () => {
     expect(await screen.findByRole("heading", { name: "Read" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
+  });
+
+  it("keeps the current screen visible and marks connection loss", async () => {
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    act(() => window.dispatchEvent(new Event("offline")));
+    expect(screen.getByRole("status")).toHaveTextContent("Offline — reconnect to the server");
+    act(() => window.dispatchEvent(new Event("online")));
+    await waitFor(() => expect(screen.queryByText(/Offline — reconnect/)).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
   });
 
   it("reuses the notification badge data when opening Alerts", async () => {

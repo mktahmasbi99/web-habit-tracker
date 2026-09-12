@@ -15,6 +15,7 @@ def test_api_workflow(monkeypatch, tmp_path):
 
     config = client.get("/api/config")
     assert config.status_code == 200
+    assert config.headers["cache-control"] == "no-store"
     today = config.json()["today"]
     assert config.json()["theme"] == "system"
 
@@ -53,17 +54,21 @@ def test_static_assets_have_appropriate_cache_headers(tmp_path):
     asset_directory = tmp_path / "assets"
     asset_directory.mkdir()
     (asset_directory / "app.js").write_text("console.log('habit tracker');")
-    icon = tmp_path / "app-icon.png"
-    icon.write_bytes(b"icon")
+    revalidated_files = ["app-icon.png", "index.html", "manifest.webmanifest", "sw.js"]
+    for filename in revalidated_files:
+        (tmp_path / filename).write_bytes(b"asset")
+    (tmp_path / "workbox-abc123.js").write_bytes(b"runtime")
     app = FastAPI()
     app.mount("/assets", main.ImmutableStaticFiles(directory=asset_directory))
 
-    @app.get("/app-icon.png")
-    def app_icon() -> FileResponse:
-        return FileResponse(icon, headers={"Cache-Control": "no-cache"})
+    @app.get("/{filename}")
+    def frontend_file(filename: str) -> FileResponse:
+        return main.frontend_file_response(tmp_path / filename)
 
     with TestClient(app) as client:
-        assert client.get("/app-icon.png").headers["cache-control"] == "no-cache"
+        for filename in revalidated_files:
+            assert client.get(f"/{filename}").headers["cache-control"] == "no-cache"
+        assert client.get("/workbox-abc123.js").headers["cache-control"] == "public, max-age=31536000, immutable"
         response = client.get("/assets/app.js")
         assert response.status_code == 200
         assert response.headers["cache-control"] == "public, max-age=31536000, immutable"
