@@ -316,32 +316,26 @@ describe("Habit Tracker", () => {
     expect(screen.getByText("Europe/Warsaw")).toBeInTheDocument();
   });
 
-  it("switches between the experimental retro themes", async () => {
+  it("switches between System and the two shared artwork themes", async () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
     await user.click(screen.getByRole("button", { name: "More" }));
-    const arcade = await screen.findByRole("radio", { name: "16-bit Arcade" });
     expect(screen.getByRole("radio", { name: "System" })).toBeChecked();
-    await user.click(arcade);
-    expect(arcade).toBeChecked();
-    expect(document.documentElement).toHaveAttribute("data-theme", "arcade");
-    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/settings/theme", expect.objectContaining({ method: "PUT", body: JSON.stringify({ theme: "arcade" }) })));
-    const crt = screen.getByRole("radio", { name: "CRT Fighter" });
-    await user.click(crt);
-    expect(crt).toBeChecked();
-    expect(document.documentElement).toHaveAttribute("data-theme", "crt");
-    const neon = screen.getByRole("radio", { name: "Neon Brawler" });
-    await user.click(neon);
-    expect(neon).toBeChecked();
-    expect(document.documentElement).toHaveAttribute("data-theme", "neon");
-    const desert = screen.getByRole("radio", { name: "Desert Quest" });
-    await user.click(desert);
-    expect(desert).toBeChecked();
-    expect(document.documentElement).toHaveAttribute("data-theme", "desert");
-    const cartridge = screen.getByRole("radio", { name: "Cartridge Mode" });
-    await user.click(cartridge);
-    expect(cartridge).toBeChecked();
-    expect(document.documentElement).toHaveAttribute("data-theme", "cartridge");
+    const noir = screen.getByRole("radio", { name: "Noir Rain" });
+    await user.click(noir);
+    expect(noir).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "noir");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/settings/theme", expect.objectContaining({ method: "PUT", body: JSON.stringify({ theme: "noir" }) })));
+    const retro = screen.getByRole("radio", { name: "Pixel Sunset" });
+    await user.click(retro);
+    expect(retro).toBeChecked();
+    expect(document.documentElement).toHaveAttribute("data-theme", "retro");
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/settings/theme", expect.objectContaining({ method: "PUT", body: JSON.stringify({ theme: "retro" }) })));
+    expect(screen.queryByRole("radio", { name: "16-bit Arcade" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "CRT Fighter" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Neon Brawler" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Desert Quest" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Cartridge Mode" })).not.toBeInTheDocument();
     expect(screen.getByText(/shared by every device/)).toBeInTheDocument();
   });
 

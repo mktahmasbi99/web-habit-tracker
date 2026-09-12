@@ -18,10 +18,14 @@ def test_api_workflow(monkeypatch, tmp_path):
     today = config.json()["today"]
     assert config.json()["theme"] == "system"
 
-    theme = client.put("/api/settings/theme", json={"theme": "arcade"})
-    assert theme.status_code == 200
-    assert theme.json() == {"theme": "arcade"}
-    assert client.get("/api/config").json()["theme"] == "arcade"
+    for value in ("noir", "retro"):
+        response = client.put("/api/settings/theme", json={"theme": value})
+        assert response.status_code == 200
+        assert response.json() == {"theme": value}
+        assert client.get("/api/config").json()["theme"] == value
+
+    retired = client.put("/api/settings/theme", json={"theme": "arcade"})
+    assert retired.status_code == 422
 
     created = client.post("/api/habits", json={"name": "Read", "startDate": today})
     assert created.status_code == 201

@@ -141,7 +141,7 @@ class HabitDatabase:
                 CREATE TABLE IF NOT EXISTS web_app_settings (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     theme TEXT NOT NULL DEFAULT 'system'
-                        CHECK (theme IN ('system', 'arcade', 'crt', 'neon', 'desert', 'cartridge')),
+                        CHECK (theme IN ('system', 'noir', 'retro')),
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS web_system_notifications (
@@ -262,6 +262,45 @@ class HabitDatabase:
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (6)"
             )
+            if connection.execute(
+                "SELECT 1 FROM web_schema_migrations WHERE version = 7"
+            ).fetchone() is None:
+                connection.executescript(
+                    """
+                    CREATE TABLE web_app_settings_new (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        theme TEXT NOT NULL DEFAULT 'system'
+                            CHECK (theme IN ('system', 'arcade', 'crt', 'neon', 'desert', 'cartridge', 'noir', 'retro')),
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO web_app_settings_new(id, theme, updated_at)
+                        SELECT id, theme, updated_at FROM web_app_settings;
+                    DROP TABLE web_app_settings;
+                    ALTER TABLE web_app_settings_new RENAME TO web_app_settings;
+                    INSERT INTO web_schema_migrations(version) VALUES (7);
+                    """
+                )
+            if connection.execute(
+                "SELECT 1 FROM web_schema_migrations WHERE version = 8"
+            ).fetchone() is None:
+                connection.executescript(
+                    """
+                    CREATE TABLE web_app_settings_new (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        theme TEXT NOT NULL DEFAULT 'system'
+                            CHECK (theme IN ('system', 'noir', 'retro')),
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO web_app_settings_new(id, theme, updated_at)
+                        SELECT id,
+                            CASE WHEN theme IN ('system', 'noir', 'retro') THEN theme ELSE 'system' END,
+                            updated_at
+                        FROM web_app_settings;
+                    DROP TABLE web_app_settings;
+                    ALTER TABLE web_app_settings_new RENAME TO web_app_settings;
+                    INSERT INTO web_schema_migrations(version) VALUES (8);
+                    """
+                )
             connection.execute("PRAGMA optimize")
             connection.commit()
 
@@ -1276,7 +1315,7 @@ class HabitDatabase:
             ).fetchone()["theme"]
 
     def update_theme(self, theme: str) -> str:
-        allowed = {"system", "arcade", "crt", "neon", "desert", "cartridge"}
+        allowed = {"system", "noir", "retro"}
         if theme not in allowed:
             raise DomainError("Choose a supported theme.")
         with self.connect() as connection:

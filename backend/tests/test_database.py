@@ -1,9 +1,11 @@
 import sqlite3
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.database import DomainError, ImportValidationError
+from app.config import Settings
+from app.database import DomainError, HabitDatabase, ImportValidationError
 
 
 def test_empty_database_contains_legacy_tables(store):
@@ -19,8 +21,47 @@ def test_empty_database_contains_legacy_tables(store):
 
 def test_theme_is_a_shared_database_setting(store):
     assert store.theme() == "system"
-    assert store.update_theme("neon") == "neon"
-    assert store.theme() == "neon"
+    assert store.update_theme("noir") == "noir"
+    assert store.update_theme("retro") == "retro"
+    with pytest.raises(DomainError, match="supported theme"):
+        store.update_theme("arcade")
+
+
+def test_theme_migration_reverts_retired_setting_to_system(tmp_path):
+    path = tmp_path / "theme-v7.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE web_schema_migrations (version INTEGER PRIMARY KEY);
+            INSERT INTO web_schema_migrations(version) VALUES (7);
+            CREATE TABLE web_app_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                theme TEXT NOT NULL DEFAULT 'system'
+                    CHECK (theme IN ('system', 'arcade', 'crt', 'neon', 'desert', 'cartridge', 'noir', 'retro')),
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO web_app_settings(id, theme, updated_at)
+                VALUES (1, 'cartridge', '2026-09-12 12:00:00');
+            """
+        )
+    settings = Settings(
+        database_path=path,
+        timezone_name="Europe/Warsaw",
+        timezone=ZoneInfo("Europe/Warsaw"),
+    )
+    migrated = HabitDatabase(settings)
+    assert migrated.theme() == "system"
+    with migrated.connect() as connection:
+        definition = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'web_app_settings'"
+        ).fetchone()[0]
+        assert "'noir'" in definition
+        assert "'retro'" in definition
+        assert "'cartridge'" not in definition
+        assert connection.execute(
+            "SELECT updated_at FROM web_app_settings WHERE id = 1"
+        ).fetchone()[0] == "2026-09-12 12:00:00"
+    assert migrated.update_theme("noir") == "noir"
 
 
 def test_pending_is_no_log_and_status_can_be_undone(store):

@@ -1,5 +1,5 @@
 export type Status = "pending" | "done" | "missed";
-export type Theme = "system" | "arcade" | "crt" | "neon" | "desert" | "cartridge";
+export type Theme = "system" | "noir" | "retro";
 
 export interface Config { today: string; timezone: string; theme: Theme }
 export interface HabitDay {

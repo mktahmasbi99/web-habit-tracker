@@ -39,7 +39,7 @@ class BackupSettingsUpdate(BaseModel):
 
 
 class ThemeUpdate(BaseModel):
-    theme: Literal["system", "arcade", "crt", "neon", "desert", "cartridge"]
+    theme: Literal["system", "noir", "retro"]
 
 
 class BackupAction(BaseModel):

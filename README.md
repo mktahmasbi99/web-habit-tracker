@@ -100,6 +100,9 @@ one browser applies on all devices when they load or refresh. Selecting System i
 also shared, while its light or dark result follows the operating-system setting on
 each individual device.
 
+Noir Rain and Pixel Sunset are the two artwork-backed themes, using the bundled
+rainy-city and pixel-ocean scenes as subtle fixed backdrops behind readable surfaces.
+
 Daily navigation cancels obsolete reads. A pending status write disables the other
 status buttons for that habit/date and displays Saving. Reads have a 15-second
 deadline and recoverable loading errors; startup, daily lists, calendar, and detail
