@@ -77,6 +77,21 @@ describe("Habit Tracker", () => {
     expect((fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => url === "/api/unresolved")).toHaveLength(callsBeforeOpeningAlerts);
   });
 
+  it("refreshes notification counts on resume without reloading Today", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    const mockedFetch = fetch as ReturnType<typeof vi.fn>;
+    const todayCalls = () => mockedFetch.mock.calls.filter(([url]) => String(url).includes("/api/days/2026-08-26/")).length;
+    const beforeResume = todayCalls();
+
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(mockedFetch.mock.calls.filter(([url]) => url === "/api/config")).toHaveLength(2));
+    expect(todayCalls()).toBe(beforeResume);
+    expect(screen.queryByText("Loading habits…")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Read" })).toBeInTheDocument();
+  });
+
   it("toggles an activity-log Done button without daily status choices", async () => {
     activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: "2026-08-22", completed: false, hasNote: false, archived: false }];
     const user = userEvent.setup(); render(<App />);

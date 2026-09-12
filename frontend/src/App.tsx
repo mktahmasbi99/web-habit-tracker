@@ -61,6 +61,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const [loadedDate, setLoadedDate] = useState("");
   const [loadError, setLoadError] = useState(false);
   const read = useRef<AbortController | null>(null);
+  const loadedDateRef = useRef("");
   const writes = useRef(new Set<string>());
   const [pendingWrites, setPendingWrites] = useState(new Set<string>());
   const [calendar, setCalendar] = useState(false);
@@ -72,14 +73,16 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const [activityLogDetail, setActivityLogDetail] = useState<ActivityLogDay | null>(null);
   const [activityLogWrites, setActivityLogWrites] = useState(new Set<number>());
   const load = useCallback(async () => {
+    const preserveContent = loadedDateRef.current === selectedDate;
     read.current?.abort();
     const controller = new AbortController(); read.current = controller;
-    setLoading(true); setLoadError(false);
+    if (!preserveContent) setLoading(true);
+    setLoadError(false);
     try {
       const [daily, activities, logs] = await Promise.all([api.habits(selectedDate, controller.signal), api.timedActivities(selectedDate, controller.signal), api.activityLogs(selectedDate, controller.signal)]);
-      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); setLoadedDate(selectedDate); }
+      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); }
     } catch (error) { if (!controller.signal.aborted) { setLoadError(true); reportError(error); } }
-    finally { if (!controller.signal.aborted) setLoading(false); }
+    finally { if (!controller.signal.aborted && !preserveContent) setLoading(false); }
   }, [selectedDate, reportError]);
   useEffect(() => { void load(); return () => read.current?.abort(); }, [load, refresh]);
   useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
@@ -419,11 +422,13 @@ export default function App() {
       const value = await api.config();
       const previous = serverDay.current;
       serverDay.current = value.today;
+      const dayChanged = previous !== "" && value.today !== previous;
       setSelectedDate(selected => !selected || selected === previous ? value.today : selected);
-      setConfig(value); setTheme(value.theme); setError(""); refreshAll();
+      setConfig(value); setTheme(value.theme); setError("");
+      if (dayChanged) refreshAll(); else void refreshNotifications().catch(reportError);
     } catch (error) { reportError(error); }
     finally { syncing.current = false; }
-  }, [refreshAll, reportError]);
+  }, [refreshAll, refreshNotifications, reportError]);
   useEffect(() => {
     const resume = () => { if (document.visibilityState !== "hidden") void syncConfig(); };
     resume();

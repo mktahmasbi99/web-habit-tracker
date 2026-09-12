@@ -87,9 +87,11 @@ MIT
 
 ## Phone behavior and verification
 
-The app refreshes the server date and daily data on foregrounding, reconnection,
-page restoration, and every 30 seconds while visible. A selection following Today
-advances with the server day; an explicitly selected historical date stays selected.
+The app refreshes the server date and notification count on foregrounding, reconnection,
+page restoration, and every 30 seconds while visible. It only reloads Today when the
+server day changes, so background checks do not interrupt reading or change scroll
+position. A selection following Today advances with the server day; an explicitly
+selected historical date stays selected.
 Open timed-entry sheets keep their original date. The server's configured IANA `TZ`
 remains authoritative even when the phone travels to another timezone.
 

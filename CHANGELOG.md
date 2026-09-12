@@ -8,6 +8,8 @@ All notable changes to this project are documented here.
 
 - Store the Appearance selection in the server database so all devices share a chosen skin; the shared System choice continues to follow each device's own light or dark mode.
 
+- Keep Today visible during background configuration and notification refreshes, avoiding disruptive scroll jumps; reload daily data only when the server-owned day changes.
+
 - Remove the redundant Stats tab. Daily streak details remain in each habit sheet while the current streak stays beside the fire icon on Today; selected-day timed weekly statistics now appear in each activity sheet.
 - Keep activity-log note access on the activity card, removing the duplicate note action from its calendar sheet.
 
