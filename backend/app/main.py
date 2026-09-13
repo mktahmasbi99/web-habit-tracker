@@ -261,6 +261,11 @@ def habit_detail(habit_id: int) -> dict:
     return database.habit_detail(habit_id)
 
 
+@app.get("/api/habits/{habit_id}/months/{month}")
+def habit_month(habit_id: int, month: str) -> dict:
+    return database.habit_month(habit_id, month)
+
+
 @app.patch("/api/habits/{habit_id}")
 def update_habit(habit_id: int, payload: HabitUpdate) -> dict:
     return database.update_habit(habit_id, payload.name, payload.startDate)

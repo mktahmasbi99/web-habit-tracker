@@ -6,6 +6,8 @@ async function fixture(page: Page) {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = [];
     if (path === "/api/config") body = { today, timezone: "Europe/Warsaw" };
+    if (path === "/api/habits/1") body = { id: 1, name: "Read", startDate: "2026-01-01", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] };
+    if (/\/api\/habits\/1\/months\/\d{4}-\d{2}$/.test(path)) body = { id: 1, name: "Read", startDate: "2026-01-01", month: "2026-09", days: [{ date: "2026-09-01", active: true, status: "done" }, { date: "2026-09-02", active: true, status: "missed" }, { date: "2026-09-03", active: true, status: "pending" }, { date: "2026-09-09", active: false, status: null }] };
     if (/\/days\/.*\/habits$/.test(path)) body = [{ id: 1, name: "Read", status: "pending", currentStreak: 0, hasNote: false, startDate: "2026-01-01" }];
     if (path.endsWith("/note")) body = { habitId: 1, habitName: "Read", date: "2026-09-08", body: "", exists: false, archived: false };
     return route.fulfill({ json: body });
@@ -78,6 +80,16 @@ test("calendar supports touch, focus containment, Escape and browser Back", asyn
   await expect(trigger).toBeFocused();
   await trigger.click(); await page.goBack(); await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+});
+
+test("daily habit details show their own done, missed, and pending calendar", async ({ page }) => {
+  await fixture(page); await page.goto("/");
+  await page.getByRole("button", { name: "Open Read" }).click();
+  await expect(page.getByRole("heading", { name: "Monthly status" })).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: "2026-09-01, done" }).locator(".done-dot")).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: "2026-09-02, missed" }).locator(".missed-dot")).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: "2026-09-03, pending" }).locator(".pending-dot")).toBeVisible();
+  await expect(page.getByRole("gridcell", { name: "2026-09-09, inactive" }).locator(".markers")).toHaveCount(0);
 });
 
 test("navigation and large text fit without horizontal overflow", async ({ page }, testInfo) => {

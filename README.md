@@ -11,6 +11,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Today and historical date navigation with a Monday-first calendar and a Jump to today action
 - Daily habit creation from any selected date
 - Pending, Done, and Missed status controls
+- Per-habit monthly status calendars with green Done, red Missed, and orange Pending markers through today, refreshed immediately after a start-date edit
 - Expandable Timed activities with clock-labelled selected-day totals on cards and entry sheets, prominent hours-and-minutes session logging, Monday-through-selected-day running totals and weekly history in each activity sheet, and per-activity daily notes
 - Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a monthly completion calendar, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current streaks beside each daily habit, plus current, longest, and historical streak statistics in each habit sheet

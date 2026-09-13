@@ -1,4 +1,4 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -88,6 +88,7 @@ export const api = {
   activityLogNotes: (id: number) => request<ActivityLogNote[]>(`/api/activity-logs/${id}/notes`),
   habitSummaries: () => request<HabitSummary[]>("/api/habits"),
   habitDetail: (id: number) => request<HabitDetail>(`/api/habits/${id}`),
+  habitMonth: (id: number, month: string, signal?: AbortSignal) => request<HabitMonth>(`/api/habits/${id}/months/${month}`, { signal }),
   updateHabit: (id: number, name: string, startDate: string) => request<HabitDetail>(`/api/habits/${id}`, json("PATCH", { name, startDate })),
   archiveHabit: (id: number) => request<HabitDetail>(`/api/habits/${id}/archive`, { method: "POST" }),
   restoreHabit: (id: number) => request<HabitDetail>(`/api/habits/${id}/restore`, { method: "POST" }),

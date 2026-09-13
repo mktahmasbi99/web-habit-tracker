@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Refresh a habit's open monthly status calendar immediately after its original start date is changed.
+
+- Add a monthly status calendar to each daily habit's detail screen, showing that habit's Done, Missed, and Pending days through today with green, red, and orange markers.
+
 - Simplify the Today date picker by removing done/missed status dots and adding a Jump to today action that selects the server date and closes the calendar.
 
 - Allow an existing daily habit's original start date to be corrected from its Edit view with a calendar date picker, while retaining its logged history and notes.

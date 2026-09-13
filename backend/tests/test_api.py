@@ -41,6 +41,16 @@ def test_api_workflow(monkeypatch, tmp_path):
     )
     assert response.status_code == 204
     assert client.get(f"/api/days/{today}/habits").json()[0]["status"] == "done"
+    month = today[:7]
+    assert client.put(f"/api/habits/{habit_id}/days/{today}/status", json={"status": "missed"}).status_code == 204
+    days = {day["date"]: day for day in client.get(f"/api/habits/{habit_id}/months/{month}").json()["days"]}
+    assert days[today] == {"date": today, "active": True, "status": "missed"}
+    pending_id = client.post("/api/habits", json={"name": "Pending", "startDate": today}).json()["id"]
+    pending_days = {day["date"]: day for day in client.get(f"/api/habits/{pending_id}/months/{month}").json()["days"]}
+    assert pending_days[today]["status"] == "pending"
+    next_month = (date.fromisoformat(today).replace(day=28) + timedelta(days=4)).replace(day=1).isoformat()[:7]
+    future_days = client.get(f"/api/habits/{pending_id}/months/{next_month}").json()["days"]
+    assert all(day["active"] is False and day["status"] is None for day in future_days)
 
 
 def test_api_returns_consistent_domain_error(monkeypatch, tmp_path):

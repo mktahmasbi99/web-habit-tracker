@@ -941,6 +941,32 @@ class HabitDatabase:
             "streaks": streaks,
         }
 
+    def habit_month(self, habit_id: int, month_value: str) -> dict:
+        month_start = self.parse_day(f"{month_value}-01")
+        next_month = (month_start.replace(day=28) + timedelta(days=4)).replace(day=1)
+        today = self.today().isoformat()
+        with self.connect() as connection:
+            habit = self._habit_row(connection, habit_id)
+            logs = dict(connection.execute(
+                """SELECT log_date, status FROM habit_logs
+                   WHERE habit_id = ? AND log_date >= ? AND log_date < ?""",
+                (habit_id, month_start.isoformat(), next_month.isoformat()),
+            ))
+            periods = connection.execute(
+                """SELECT archived_at, resurrected_at FROM habit_archive_periods
+                   WHERE habit_id = ?""", (habit_id,)
+            ).fetchall()
+        days, current = [], month_start
+        while current < next_month:
+            value = current.isoformat()
+            inactive = any(period["archived_at"] < value and (
+                period["resurrected_at"] is None or period["resurrected_at"] > value
+            ) for period in periods)
+            active = habit["start_date"] <= value <= today and not inactive
+            days.append({"date": value, "active": active, "status": logs.get(value, "pending") if active else None})
+            current += timedelta(days=1)
+        return {"id": habit_id, "name": habit["name"], "startDate": habit["start_date"], "month": month_value, "days": days}
+
     def rename_habit(self, habit_id: int, name: str) -> dict:
         cleaned = self._clean_name(name)
         with self.connect() as connection, connection:
