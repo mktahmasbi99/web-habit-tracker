@@ -150,3 +150,8 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-week button { min-width: 44px; }
 .detail-title-editor input[type="date"] { min-height: 44px; font: inherit; letter-spacing: normal; }
 .habit-detail-content:has(.detail-title-editor) > .detail-facts { display: none; }
+
+.danger-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.danger-button svg { width: 17px; height: 17px; }
+.habit-menu button { display: flex; align-items: center; gap: 8px; }
+.habit-menu button svg { width: 18px; height: 18px; }
