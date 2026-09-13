@@ -14,7 +14,6 @@ export default function HabitStatusCalendar({ habitId, today, refreshKey, onErro
   const [attempt, setAttempt] = useState(0);
   const first = parse(`${month}-01`);
   const leading = (first.getUTCDay() + 6) % 7;
-  const next = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 1, 12));
   const shift = (offset: number) => setMonth(iso(new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + offset, 1, 12))).slice(0, 7));
 
   useEffect(() => {
