@@ -148,3 +148,5 @@ input, textarea, select { scroll-margin-block: 80px; }
 .modal-body:has(.timed-week) { padding-inline: 6px; }
 .timed-week { gap: 0; }
 .timed-week button { min-width: 44px; }
+.detail-title-editor input[type="date"] { min-height: 44px; font: inherit; letter-spacing: normal; }
+.habit-detail-content:has(.detail-title-editor) > .detail-facts { display: none; }

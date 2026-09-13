@@ -19,6 +19,7 @@ from .schemas import (
     HabitCreate,
     HabitDelete,
     HabitRename,
+    HabitUpdate,
     NoteUpdate,
     StatusUpdate,
     ThemeUpdate,
@@ -261,8 +262,8 @@ def habit_detail(habit_id: int) -> dict:
 
 
 @app.patch("/api/habits/{habit_id}")
-def rename_habit(habit_id: int, payload: HabitRename) -> dict:
-    return database.rename_habit(habit_id, payload.name)
+def update_habit(habit_id: int, payload: HabitUpdate) -> dict:
+    return database.update_habit(habit_id, payload.name, payload.startDate)
 
 
 @app.post("/api/habits/{habit_id}/archive")

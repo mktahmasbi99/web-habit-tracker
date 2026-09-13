@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Allow an existing daily habit's original start date to be corrected from its Edit view with a calendar date picker, while retaining its logged history and notes.
+
 - Add installable iOS and Android PWA packaging with platform-specific setup guidance, scalable Home Screen icons, safe-area-aware standalone display, static-shell-only caching, explicit offline status, private Tailscale Serve HTTPS deployment, and user-controlled frontend updates.
 
 - Keep System, Noir Rain, and Pixel Sunset as the only Appearance themes; retired selections automatically revert to System during migration.

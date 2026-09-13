@@ -12,6 +12,11 @@ class HabitRename(BaseModel):
     name: str
 
 
+class HabitUpdate(BaseModel):
+    name: str
+    startDate: str | None = None
+
+
 class HabitDelete(BaseModel):
     confirmation: str
 

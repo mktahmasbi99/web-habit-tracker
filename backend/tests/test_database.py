@@ -296,10 +296,15 @@ def test_habit_lifecycle_preserves_history_and_uses_pre_delete_backup(store):
     renamed = store.rename_habit(habit["id"], "Morning reading")
     assert renamed["name"] == "Morning reading"
 
+    corrected_start = start - timedelta(days=1)
+    updated = store.update_habit(habit["id"], "Morning reading", corrected_start.isoformat())
+    assert updated["startDate"] == corrected_start.isoformat()
+    assert updated["noteCount"] == 1
+
     archived = store.archive_habit(habit["id"])
     assert archived["archived"] is True
     assert archived["latestActiveRange"] == {
-        "startDate": start.isoformat(), "endDate": today.isoformat(),
+        "startDate": corrected_start.isoformat(), "endDate": today.isoformat(),
     }
     assert store.habits_on(today.isoformat())[0]["id"] == habit["id"]
     assert store.habits_on((today + timedelta(days=1)).isoformat()) == []

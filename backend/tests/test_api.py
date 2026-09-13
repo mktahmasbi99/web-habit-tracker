@@ -31,6 +31,11 @@ def test_api_workflow(monkeypatch, tmp_path):
     created = client.post("/api/habits", json={"name": "Read", "startDate": today})
     assert created.status_code == 201
     habit_id = created.json()["id"]
+    corrected_start = (date.fromisoformat(today) - timedelta(days=1)).isoformat()
+    updated = client.patch(f"/api/habits/{habit_id}", json={"name": "Read books", "startDate": corrected_start})
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Read books"
+    assert updated.json()["startDate"] == corrected_start
     response = client.put(
         f"/api/habits/{habit_id}/days/{today}/status", json={"status": "done"}
     )

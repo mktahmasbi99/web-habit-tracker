@@ -948,6 +948,17 @@ class HabitDatabase:
             connection.execute("UPDATE habits SET name = ? WHERE id = ?", (cleaned, habit_id))
         return self.habit_detail(habit_id)
 
+    def update_habit(self, habit_id: int, name: str, start_date: str | None = None) -> dict:
+        cleaned = self._clean_name(name)
+        with self.connect() as connection, connection:
+            habit = self._habit_row(connection, habit_id)
+            start = self.parse_day(start_date) if start_date is not None else date.fromisoformat(habit["start_date"])
+            connection.execute(
+                "UPDATE habits SET name = ?, start_date = ? WHERE id = ?",
+                (cleaned, start.isoformat(), habit_id),
+            )
+        return self.habit_detail(habit_id)
+
     def archive_habit(self, habit_id: int) -> dict:
         today = self.today().isoformat()
         with self.connect() as connection, connection:

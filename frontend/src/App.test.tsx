@@ -11,6 +11,7 @@ let noteResponse: unknown;
 let noteSummaries: unknown[];
 let habitNotes: unknown[];
 let habitName: string;
+let habitStartDate: string;
 let timedActivities: unknown[];
 let activityLogs: unknown[];
 
@@ -21,6 +22,7 @@ describe("Habit Tracker", () => {
     noteSummaries = [];
     habitNotes = [];
     habitName = "Read";
+    habitStartDate = "2026-08-26";
     timedActivities = [];
     activityLogs = [];
     window.history.replaceState(null, "", "/");
@@ -34,8 +36,8 @@ describe("Habit Tracker", () => {
       if (url === "/api/backups/settings") return ok({ dailyEnabled: true, dailyTime: "01:00", dailyRetention: 7, weeklyEnabled: true, weeklyDay: 6, weeklyTime: "01:00", weeklyRetention: 8, safetyRetention: 8 });
       if (url === "/api/habits") return ok([{ id: 1, name: "Read", startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0 }, { id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1 }]);
       if (url === "/api/habits/1") {
-        if (init?.method === "PATCH") habitName = JSON.parse(String(init.body)).name;
-        return ok({ id: 1, name: habitName, startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] });
+        if (init?.method === "PATCH") { const body = JSON.parse(String(init.body)); habitName = body.name; habitStartDate = body.startDate; }
+        return ok({ id: 1, name: habitName, startDate: habitStartDate, archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] });
       }
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
@@ -218,6 +220,17 @@ describe("Habit Tracker", () => {
     await user.click(screen.getByRole("button", { name: "Close habit details" }));
     expect(await screen.findByRole("button", { name: "Open Read books" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open Read" })).not.toBeInTheDocument();
+  });
+
+  it("edits a daily habit's original start date with a date picker", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Read" }));
+    await user.click(await screen.findByRole("button", { name: "Edit habit" }));
+    const startDate = screen.getByLabelText("Original start date");
+    expect(startDate).toHaveAttribute("type", "date");
+    await user.clear(startDate); await user.type(startDate, "2026-08-01");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByText("1 Aug 2026")).toBeInTheDocument());
   });
 
   it("only shows the date subtitle for today, yesterday, and tomorrow", async () => {
