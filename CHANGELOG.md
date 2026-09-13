@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Simplify the Today date picker by removing done/missed status dots and adding a Jump to today action that selects the server date and closes the calendar.
+
 - Allow an existing daily habit's original start date to be corrected from its Edit view with a calendar date picker, while retaining its logged history and notes.
 
 - Add installable iOS and Android PWA packaging with platform-specific setup guidance, scalable Home Screen icons, safe-area-aware standalone display, static-shell-only caching, explicit offline status, private Tailscale Serve HTTPS deployment, and user-controlled frontend updates.

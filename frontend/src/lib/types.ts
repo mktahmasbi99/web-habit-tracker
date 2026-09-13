@@ -36,7 +36,6 @@ export interface ArchivePeriod {
   id: number; number: number; startDate: string; endDate: string;
   currentStreak: number; longestStreak: Streak | null; streaks: Streak[]; notes: HabitNote[];
 }
-export interface MonthDay { date: string; done: number; missed: number }
 export interface Unresolved { date: string; pendingCount: number }
 export interface NoteSummary {
   id: number; name: string; startDate: string; archived: boolean; noteCount: number;

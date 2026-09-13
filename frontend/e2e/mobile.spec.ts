@@ -166,16 +166,18 @@ test("nested confirmations consume Back before the activity sheet", async ({ pag
   expect(await page.evaluate(() => document.body.style.overflow)).not.toBe("hidden");
 });
 
-test("calendar errors can retry without losing the selected day", async ({ page }) => {
-  await fixture(page); let fail = true;
-  await page.route("**/api/months/*", route => fail ? route.abort() : route.fulfill({ json: [{ date: "2026-09-08", done: 2, missed: 1 }] }));
+test("calendar can jump back to today without completion markers", async ({ page }) => {
+  await fixture(page);
   await page.goto("/"); await page.getByRole("button", { name: "Today 2026-09-08" }).click();
   const dialog = page.getByRole("dialog", { name: "Calendar" });
+  await dialog.getByRole("button", { name: "2026-09-07", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Yesterday" })).toBeVisible();
+  await page.getByRole("button", { name: "Yesterday 2026-09-07" }).click();
   const today = dialog.getByRole("button", { name: "2026-09-08", exact: true });
-  await expect(today).toHaveAccessibleDescription("Completion summary unavailable");
-  fail = false; await dialog.getByRole("button", { name: "Retry" }).click();
-  await expect(today).toHaveAccessibleDescription("2 done, 1 missed");
-  await expect(today).toHaveAttribute("aria-pressed", "true");
+  await expect(today.locator(".done-dot, .missed-dot, .markers")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Jump to today" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
 });
 
 test("timed management details support direct URLs and browser Back", async ({ page }) => {

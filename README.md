@@ -8,7 +8,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 
 ## Implemented in v1
 
-- Today and historical date navigation with a Monday-first calendar
+- Today and historical date navigation with a Monday-first calendar and a Jump to today action
 - Daily habit creation from any selected date
 - Pending, Done, and Missed status controls
 - Expandable Timed activities with clock-labelled selected-day totals on cards and entry sheets, prominent hours-and-minutes session logging, Monday-through-selected-day running totals and weekly history in each activity sheet, and per-activity daily notes
@@ -129,8 +129,8 @@ remains authoritative even when the phone travels to another timezone.
 
 Daily navigation cancels obsolete reads. A pending status write disables the other
 status buttons for that habit/date and displays Saving. Reads have a 15-second
-deadline and recoverable loading errors; startup, daily lists, calendar, and detail
-screens offer Retry. Writes are never retried automatically. If connectivity is lost
+deadline and recoverable loading errors; startup, daily lists, and detail screens
+offer Retry. Writes are never retried automatically. If connectivity is lost
 after submitting a duration entry, check the server's entries before submitting again.
 
 Timed-entry fields start blank and show `0` only as a placeholder. The Minutes field
@@ -146,8 +146,9 @@ remain in memory across reconnects; they are not durable browser storage and can
 survive a terminated browser process. Explicit Cancel discards the edit.
 
 Navigation stays along the bottom on short landscape screens. Touch controls target
-44 CSS pixels; form controls use at least 16px text, calendar states include accessible
-summaries, and layouts account for safe areas and the visible keyboard viewport.
+44 CSS pixels; form controls use at least 16px text, calendar dates expose their
+selection and today states accessibly, and layouts account for safe areas and the
+visible keyboard viewport.
 Pinch zoom, system light/dark appearance, and reduced motion remain supported.
 
 Run frontend unit tests, type checking, build, and lint as follows:

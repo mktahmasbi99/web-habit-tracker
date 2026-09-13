@@ -1,4 +1,4 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, MonthDay, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
 
 export class ApiError extends Error {}
 
@@ -96,7 +96,6 @@ export const api = {
   setStatus: (id: number, day: string, status: Status) => request<void>(`/api/habits/${id}/days/${day}/status`, json("PUT", { status })),
   note: (id: number, day: string) => request<NoteDetail>(`/api/habits/${id}/days/${day}/note`),
   saveNote: (id: number, day: string, body: string) => request<void>(`/api/habits/${id}/days/${day}/note`, json("PUT", { body })),
-  month: (month: string, signal?: AbortSignal) => request<MonthDay[]>(`/api/months/${month}`, { signal }),
   noteSummaries: () => request<NoteSummary[]>("/api/notes"),
   habitNotes: (id: number) => request<HabitNote[]>(`/api/habits/${id}/notes`),
   unresolved: () => request<Unresolved[]>("/api/unresolved"),
