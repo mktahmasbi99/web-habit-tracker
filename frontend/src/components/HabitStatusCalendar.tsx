@@ -7,7 +7,7 @@ const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const parse = (value: string) => new Date(`${value}T12:00:00Z`);
 const iso = (value: Date) => value.toISOString().slice(0, 10);
 
-export default function HabitStatusCalendar({ habitId, today, refreshKey, onError }: { habitId: number; today: string; refreshKey: string; onError: (error: unknown) => void }) {
+export default function HabitStatusCalendar({ habitId, today, refreshKey, onError, onNavigateToDate }: { habitId: number; today: string; refreshKey: string; onError: (error: unknown) => void; onNavigateToDate: (date: string) => void }) {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [data, setData] = useState<HabitMonth | null>(null);
   const [error, setError] = useState("");
@@ -36,7 +36,7 @@ export default function HabitStatusCalendar({ habitId, today, refreshKey, onErro
       <div className="calendar-grid weekdays">{weekdays.map(day => <span key={day}>{day}</span>)}</div>
       <div className="calendar-grid days" role="grid" aria-label={`${first.toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })} habit status`}>
         {Array.from({ length: leading }, (_, index) => <span key={`blank-${index}`} role="presentation" />)}
-        {data?.days.map(day => <span key={day.date} className={`calendar-day habit-status-day ${day.date === today ? "today" : ""} ${day.active ? "active" : "inactive"}`} role="gridcell" aria-label={`${day.date}${day.active ? `, ${day.status}` : ", inactive"}`}><span>{Number(day.date.slice(-2))}</span>{day.active && <span className="markers" aria-hidden="true"><i className={`${day.status}-dot`} /></span>}</span>)}
+        {data?.days.map(day => day.active ? <button key={day.date} className={`calendar-day habit-status-day active ${day.date === today ? "today" : ""}`} role="gridcell" onClick={() => onNavigateToDate(day.date)} aria-label={`${day.date}, ${day.status}`}><span>{Number(day.date.slice(-2))}</span><span className="markers" aria-hidden="true"><i className={`${day.status}-dot`} /></span></button> : <span key={day.date} className="calendar-day habit-status-day inactive" role="gridcell" aria-label={`${day.date}, inactive`}><span>{Number(day.date.slice(-2))}</span></span>)}
       </div>
     </div>
     <p className="status-calendar-key"><span><i className="done-dot" />Done</span><span><i className="missed-dot" />Missed</span><span><i className="pending-dot" />Pending</span></p>

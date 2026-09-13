@@ -45,6 +45,7 @@ describe("Habit Tracker", () => {
       if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
       if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
       if (url === "/api/activity-logs") return ok([]);
+      if (url === "/api/activity-logs/8/months/2026-08") return ok({ id: 8, name: "Change vase water", month: "2026-08", days: [{ date: "2026-08-25", active: true, completed: true, hasNote: false }] });
       if (/^\/api\/activity-logs\/\d+\/days\/\d{4}-\d{2}-\d{2}\/completion$/.test(url)) {
         const body = JSON.parse(String(init?.body)) as { status: string };
         activityLogs = (activityLogs as Array<Record<string, unknown>>).map(item => ({ ...item, completed: body.status === "done", lastCompletedDate: body.status === "done" ? "2026-08-26" : null }));
@@ -207,6 +208,18 @@ describe("Habit Tracker", () => {
     expect(name).toHaveFocus();
     expect(name).toHaveValue("Change vase water");
     expect(screen.queryByRole("heading", { name: "Change vase water" })).not.toBeInTheDocument();
+  });
+
+  it("opens a selected date from the activity-log calendar", async () => {
+    const user = userEvent.setup();
+    activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: null, completed: false, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Change vase water" }));
+    const date = await screen.findByRole("button", { name: "2026-08-25, completed" });
+    expect(date).toHaveClass("active");
+    await user.click(date);
+    expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Change vase water" })).not.toBeInTheDocument();
   });
 
   it("refreshes the Today card after renaming a daily habit", async () => {
