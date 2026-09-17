@@ -83,9 +83,10 @@ def test_pomodoro_pause_resume_break_and_reset(store):
 
 
 def test_timers_are_concurrent_per_activity_and_block_archive(store):
-    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
-    study = store.create_timed_activity("Study", "2026-09-17")
-    offline = store.create_timed_activity("Offline", "2026-09-17")
+    now = datetime.now(UTC)
+    today = store.today().isoformat()
+    study = store.create_timed_activity("Study", today)
+    offline = store.create_timed_activity("Offline", today)
     first = store.start_timer(study["id"], "pomodoro", None, now)
     store.start_timer(offline["id"], "countdown", 60, now)
     assert len(store.timer_states(now)["timers"]) == 2
