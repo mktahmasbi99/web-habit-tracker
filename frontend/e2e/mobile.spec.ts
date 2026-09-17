@@ -6,6 +6,7 @@ async function fixture(page: Page) {
     const path = new URL(route.request().url()).pathname;
     let body: unknown = [];
     if (path === "/api/config") body = { today, timezone: "Europe/Warsaw" };
+    if (path === "/api/timed-activity-timers") body = { serverNow: new Date().toISOString(), timers: [] };
     if (path === "/api/habits/1") body = { id: 1, name: "Read", startDate: "2026-01-01", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] };
     if (/\/api\/habits\/1\/months\/\d{4}-\d{2}$/.test(path)) body = { id: 1, name: "Read", startDate: "2026-01-01", month: "2026-09", days: [{ date: "2026-09-01", active: true, status: "done" }, { date: "2026-09-02", active: true, status: "missed" }, { date: "2026-09-03", active: true, status: "pending" }, { date: "2026-09-09", active: false, status: null }] };
     if (/\/days\/.*\/habits$/.test(path)) body = [{ id: 1, name: "Read", status: "pending", currentStreak: 0, hasNote: false, startDate: "2026-01-01" }];
@@ -206,4 +207,31 @@ test("timed management details support direct URLs and browser Back", async ({ p
   await expect(page.getByRole("heading", { name: "Study" })).toBeVisible();
   await page.getByRole("button", { name: "Close timed activity details" }).click();
   await expect(page).toHaveURL("/");
+});
+
+test("different timed activities show concurrent Pomodoro and countdown state", async ({ page }) => {
+  await fixture(page);
+  const serverNow = new Date().toISOString();
+  await page.route("**/api/days/*/timed-activities", route => route.fulfill({ json: [
+    { id: 10, name: "Study", startDate: "2026-09-01", dayMinutes: 25, weekMinutes: 25, hasNote: false, archived: false },
+    { id: 11, name: "Stay offline", startDate: "2026-09-01", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false },
+  ] }));
+  await page.route("**/api/timed-activity-timers", route => route.fulfill({ json: { serverNow, timers: [
+    { activityId: 10, mode: "pomodoro", phase: "focus", status: "paused", targetMinutes: 25, elapsedSeconds: 180, remainingSeconds: 1320, percent: 12, focusNumber: 1, phaseStartedAt: null, phaseDeadlineAt: null, revision: 2 },
+    { activityId: 11, mode: "countdown", phase: "countdown", status: "running", targetMinutes: 600, elapsedSeconds: 3600, remainingSeconds: 32400, percent: 10, focusNumber: 1, phaseStartedAt: serverNow, phaseDeadlineAt: new Date(Date.parse(serverNow) + 32_400_000).toISOString(), revision: 1 },
+  ] } }));
+  await page.route("**/api/timed-activities/*/weeks/*", route => {
+    const id = Number(new URL(route.request().url()).pathname.split("/")[3]);
+    return route.fulfill({ json: { id, name: id === 10 ? "Study" : "Stay offline", startDate: "2026-09-01", selectedDate: "2026-09-08", days: [{ date: "2026-09-08", minutes: id === 10 ? 25 : 0, entries: [], active: true }], note: "" } });
+  });
+  await page.goto("/");
+  await expect(page.getByLabel("Pomodoro timer active")).toBeVisible();
+  await expect(page.getByLabel(/percent complete/)).toBeVisible();
+  await page.getByRole("button", { name: "Open Study" }).click();
+  await expect(page.getByText("Focus 1 of 4")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Open Stay offline" }).click();
+  await expect(page.getByText("Countdown", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel countdown" })).toBeVisible();
 });

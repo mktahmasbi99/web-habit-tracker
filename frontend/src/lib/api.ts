@@ -1,6 +1,8 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityWeek, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityTimer, TimedActivityTimers, TimedActivityWeek, TimerMode, Unresolved } from "./types";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message: string, public status?: number, public data?: unknown) { super(message); }
+}
 
 // Only reads time out. Writes are never retried automatically: their outcome may
 // already be committed even if the connection disappears.
@@ -29,8 +31,9 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetchRead(url, options);
   if (!response.ok) {
     let message = "Something went wrong.";
-    try { message = (await response.json()).detail ?? message; } catch { /* non-JSON error */ }
-    throw new ApiError(message);
+    let data: unknown;
+    try { data = await response.json(); message = (data as { detail?: string }).detail ?? message; } catch { /* non-JSON error */ }
+    throw new ApiError(message, response.status, data);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -66,6 +69,13 @@ export const api = {
   restoreTimedActivity: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}/restore`, { method: "POST" }),
   deleteTimedActivity: (id: number, confirmation: string) => request<{ status: string; backup: string }>(`/api/timed-activities/${id}`, json("DELETE", { confirmation })),
   timedWeek: (id: number, day: string) => request<TimedActivityWeek>(`/api/timed-activities/${id}/weeks/${day}`),
+  timers: () => request<TimedActivityTimers>("/api/timed-activity-timers"),
+  startTimer: (id: number, mode: TimerMode, targetMinutes?: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer`, json("POST", { mode, targetMinutes })),
+  pauseTimer: (id: number, revision: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer/pause`, json("POST", { revision })),
+  resumeTimer: (id: number, revision: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer/resume`, json("POST", { revision })),
+  skipTimerBreak: (id: number, revision: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer/skip-break`, json("POST", { revision })),
+  startTimerFocus: (id: number, revision: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer/start-focus`, json("POST", { revision })),
+  cancelTimer: (id: number, revision: number) => request<void>(`/api/timed-activities/${id}/timer`, json("DELETE", { revision })),
   addTimedEntry: (id: number, day: string, minutes: number) => request<{ id: number; minutes: number }>(`/api/timed-activities/${id}/days/${day}/entries`, json("POST", { minutes })),
   updateTimedEntry: (id: number, entryId: number, minutes: number) => request<{ id: number; minutes: number }>(`/api/timed-activities/${id}/entries/${entryId}`, json("PATCH", { minutes })),
   deleteTimedEntry: (id: number, entryId: number) => request<void>(`/api/timed-activities/${id}/entries/${entryId}`, { method: "DELETE" }),

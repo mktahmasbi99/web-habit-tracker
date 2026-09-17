@@ -12,7 +12,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Daily habit creation from any selected date
 - Pending, Done, and Missed status controls
 - Per-habit monthly status calendars with green Done, red Missed, and orange Pending markers through today, refreshed immediately after a start-date edit
-- Expandable Timed activities with clock-labelled selected-day totals on cards and entry sheets, prominent hours-and-minutes session logging, Monday-through-selected-day running totals and weekly history in each activity sheet, and per-activity daily notes
+- Expandable Timed activities with manual duration entry plus server-backed, concurrent Pomodoro and countdown timers on Today; timers survive client and server restarts, split completed time across local midnight, and feed the existing editable entries, daily totals, and weekly history
 - Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a monthly completion calendar, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current streaks beside each daily habit, plus current, longest, and historical streak statistics in each habit sheet
 - Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
@@ -29,6 +29,8 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Daily habits use binary Done, Missed, and Pending states. Timed activities are observational and never imply success or failure.
 - A missing timed-activity entry means zero. Multiple sessions can be logged per day, use whole minutes, and may total at most 24 hours per activity per day.
 - Timed entries and notes can be changed on any active date through today; future dates reject them.
+- Live Pomodoro and countdown controls are available only on Today. Each activity can run one timer, while different activities can run concurrently; active timers reserve their activity's remaining daily capacity.
+- Pomodoro uses 25-minute focus periods, 5-minute breaks, and a 15-minute break after the fourth focus. Countdown targets range from 1 minute to 24 hours and record nothing when cancelled.
 - Pending is the default and is represented by no saved log row.
 - Any date can be changed or undone.
 - Historical Pending and Missed days break a streak.

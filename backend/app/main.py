@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_settings
-from .database import DomainError, HabitDatabase
+from .database import DomainError, HabitDatabase, TimerConflict
 from .schemas import (
     BackupAction,
     BackupDelete,
@@ -24,6 +24,8 @@ from .schemas import (
     StatusUpdate,
     ThemeUpdate,
     TimedEntryUpdate,
+    TimerRevision,
+    TimerStart,
 )
 
 settings = load_settings()
@@ -47,15 +49,28 @@ async def backup_scheduler() -> None:
         await asyncio.sleep(60)
 
 
+async def timer_scheduler() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(database.reconcile_timers)
+        except (DomainError, OSError, sqlite3.Error):
+            pass
+        await asyncio.sleep(1)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     task = asyncio.create_task(backup_scheduler())
+    timer_task = asyncio.create_task(timer_scheduler())
     try:
         yield
     finally:
         task.cancel()
+        timer_task.cancel()
         with suppress(asyncio.CancelledError):
             await task
+        with suppress(asyncio.CancelledError):
+            await timer_task
 
 
 app = FastAPI(title="web-habit-tracker API", version="1.0.0", lifespan=lifespan)
@@ -73,6 +88,12 @@ async def prevent_api_caching(request: Request, call_next):
 async def domain_error_handler(_, exc: DomainError):
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(TimerConflict)
+async def timer_conflict_handler(_, exc: TimerConflict):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=409, content={"detail": str(exc), "timer": exc.state})
 
 
 @app.get("/api/health")
@@ -147,6 +168,41 @@ def delete_timed_activity(activity_id: int, payload: HabitDelete) -> dict[str, s
 @app.get("/api/timed-activities/{activity_id}/weeks/{day}")
 def timed_activity_week(activity_id: int, day: str) -> dict:
     return database.timed_activity_week(activity_id, day)
+
+
+@app.get("/api/timed-activity-timers")
+def timed_activity_timers() -> dict:
+    return database.timer_states()
+
+
+@app.post("/api/timed-activities/{activity_id}/timer", status_code=201)
+def start_timed_activity_timer(activity_id: int, payload: TimerStart) -> dict:
+    return database.start_timer(activity_id, payload.mode, payload.targetMinutes)
+
+
+@app.post("/api/timed-activities/{activity_id}/timer/pause")
+def pause_timed_activity_timer(activity_id: int, payload: TimerRevision) -> dict:
+    return database.pause_timer(activity_id, payload.revision)
+
+
+@app.post("/api/timed-activities/{activity_id}/timer/resume")
+def resume_timed_activity_timer(activity_id: int, payload: TimerRevision) -> dict:
+    return database.resume_timer(activity_id, payload.revision)
+
+
+@app.post("/api/timed-activities/{activity_id}/timer/skip-break")
+def skip_timed_activity_break(activity_id: int, payload: TimerRevision) -> dict:
+    return database.skip_timer_break(activity_id, payload.revision)
+
+
+@app.post("/api/timed-activities/{activity_id}/timer/start-focus")
+def start_timed_activity_focus(activity_id: int, payload: TimerRevision) -> dict:
+    return database.start_timer_focus(activity_id, payload.revision)
+
+
+@app.delete("/api/timed-activities/{activity_id}/timer", status_code=204)
+def cancel_timed_activity_timer(activity_id: int, payload: TimerRevision) -> None:
+    database.cancel_timer(activity_id, payload.revision)
 
 
 @app.post("/api/timed-activities/{activity_id}/days/{day}/entries", status_code=201)

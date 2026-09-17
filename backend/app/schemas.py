@@ -33,6 +33,15 @@ class TimedEntryUpdate(BaseModel):
     minutes: int = Field(ge=1, le=1440)
 
 
+class TimerStart(BaseModel):
+    mode: Literal["pomodoro", "countdown"]
+    targetMinutes: int | None = Field(default=None, ge=1, le=1440)
+
+
+class TimerRevision(BaseModel):
+    revision: int = Field(ge=1)
+
+
 class BackupSettingsUpdate(BaseModel):
     dailyEnabled: bool
     dailyTime: str

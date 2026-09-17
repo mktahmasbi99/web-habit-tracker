@@ -14,6 +14,7 @@ let habitName: string;
 let habitStartDate: string;
 let timedActivities: unknown[];
 let activityLogs: unknown[];
+let timerSnapshot: { serverNow: string; timers: Array<Record<string, unknown>> };
 
 describe("Habit Tracker", () => {
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe("Habit Tracker", () => {
     habitStartDate = "2026-08-26";
     timedActivities = [];
     activityLogs = [];
+    timerSnapshot = { serverNow: new Date().toISOString(), timers: [] };
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -42,7 +44,14 @@ describe("Habit Tracker", () => {
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
+      if (url === "/api/timed-activity-timers") return ok(timerSnapshot);
+      if (/^\/api\/timed-activities\/\d+\/timer$/.test(url) && init?.method === "POST") {
+        const id = Number(url.split("/")[3]); const body = JSON.parse(String(init.body));
+        const timer = { activityId: id, mode: body.mode, phase: body.mode === "pomodoro" ? "focus" : "countdown", status: "running", targetMinutes: body.mode === "pomodoro" ? 25 : body.targetMinutes, elapsedSeconds: 0, remainingSeconds: (body.mode === "pomodoro" ? 25 : body.targetMinutes) * 60, percent: 0, focusNumber: 1, phaseStartedAt: timerSnapshot.serverNow, phaseDeadlineAt: new Date(Date.parse(timerSnapshot.serverNow) + (body.mode === "pomodoro" ? 25 : body.targetMinutes) * 60_000).toISOString(), revision: 1 };
+        timerSnapshot.timers.push(timer); return ok(timer, 201);
+      }
       if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
+      if (url === "/api/timed-activities/10/weeks/2026-08-25") return ok({ id: 10, name: "Study", startDate: "2026-08-25", selectedDate: "2026-08-25", days: [{ date: "2026-08-25", minutes: 30, entries: [{ id: 99, minutes: 30 }], active: true }], note: "" });
       if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
       if (url === "/api/activity-logs") return ok([]);
       if (url === "/api/activity-logs/8/months/2026-08") return ok({ id: 8, name: "Change vase water", month: "2026-08", days: [{ date: "2026-08-25", active: true, completed: true, hasNote: false }] });
@@ -144,6 +153,37 @@ describe("Habit Tracker", () => {
     const entries = screen.getByRole("heading", { name: "Entries" });
     expect(hours.compareDocumentPosition(entries) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(document.querySelector(".timed-title-total")).toHaveTextContent("1h 30m");
+  });
+
+  it("offers Today-only manual, Pomodoro, and countdown sessions", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    expect(screen.getByRole("radio", { name: "Manual" })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: "Pomodoro" }));
+    await user.click(screen.getByRole("button", { name: "Start focus" }));
+    expect(await screen.findByText("Focus 1 of 4")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Pomodoro timer active")).toBeInTheDocument();
+  });
+
+  it("shows countdown progress on the activity card", async () => {
+    timedActivities = [{ id: 11, name: "Stay offline", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
+    timerSnapshot.timers = [{ activityId: 11, mode: "countdown", phase: "countdown", status: "running", targetMinutes: 600, elapsedSeconds: 3600, remainingSeconds: 32400, percent: 10, focusNumber: 1, phaseStartedAt: timerSnapshot.serverNow, phaseDeadlineAt: new Date(Date.parse(timerSnapshot.serverNow) + 32_400_000).toISOString(), revision: 1 }];
+    render(<App />);
+    expect(await screen.findByLabelText(/percent complete/)).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toHaveValue(10);
+  });
+
+  it("keeps historical timed activities manual-only", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-25", dayMinutes: 30, weekMinutes: 30, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Previous day" }));
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    expect(screen.queryByRole("radio", { name: "Pomodoro" })).not.toBeInTheDocument();
+    expect(screen.getByRole("spinbutton", { name: "Hours" })).toBeInTheDocument();
   });
 
   it("keeps daily streaks glanceable and places timed statistics in the activity sheet", async () => {

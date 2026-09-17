@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add persistent, concurrent Today-only Pomodoro and countdown timers to Timed activities, with cross-device state, pause/resume and break controls, automatic whole-minute entries split at the configured timezone's midnight, compact card indicators, optional local alerts, and ordinary editing or deletion of completed logs.
+
 - Refresh a habit's open monthly status calendar immediately after its original start date is changed.
 
 - Add a monthly status calendar to each daily habit's detail screen, showing that habit's Done, Missed, and Pending days through today with green, red, and orange markers.

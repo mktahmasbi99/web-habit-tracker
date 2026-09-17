@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -16,7 +16,110 @@ def test_empty_database_contains_legacy_tables(store):
     assert {
         "habits", "habit_logs", "habit_notes", "habit_challenges",
         "habit_archive_periods", "web_schema_migrations", "web_app_settings",
+        "timed_activity_timers", "timed_activity_timer_segments",
     }.issubset(tables)
+
+
+def test_countdown_splits_at_local_midnight_and_cancel_discards(store):
+    start = datetime(2026, 9, 17, 21, 50, tzinfo=UTC)  # 23:50 in Warsaw
+    activity = store.create_timed_activity("Offline", "2026-09-17")
+    timer = store.start_timer(activity["id"], "countdown", 25, start)
+    assert timer["remainingSeconds"] == 1500
+    with pytest.raises(DomainError, match="live timer"):
+        store.add_timed_entry(activity["id"], "2026-09-17", 1)
+
+    store.reconcile_timers(start + timedelta(minutes=25))
+    with store.connect() as connection:
+        rows = connection.execute(
+            "SELECT entry_date, minutes FROM timed_activity_entries ORDER BY entry_date"
+        ).fetchall()
+    assert [(row["entry_date"], row["minutes"]) for row in rows] == [
+        ("2026-09-17", 10), ("2026-09-18", 15),
+    ]
+
+    later = datetime(2026, 9, 18, 10, tzinfo=UTC)
+    timer = store.start_timer(activity["id"], "countdown", 60, later)
+    store.cancel_timer(activity["id"], timer["revision"], later + timedelta(minutes=1))
+    assert store.timer_states(later)["timers"] == []
+
+
+def test_timer_minute_allocation_is_deterministic_across_dst(store):
+    tied = store._split_timer_minutes([
+        (datetime(2026, 9, 17, 21, 59, 30, tzinfo=UTC),
+         datetime(2026, 9, 17, 22, 0, 30, tzinfo=UTC))
+    ], 1)
+    assert tied == {"2026-09-17": 1}
+
+    spring = store._split_timer_minutes([
+        (datetime(2026, 3, 28, 22, 30, tzinfo=UTC),
+         datetime(2026, 3, 29, 22, 30, tzinfo=UTC))
+    ], 1440)
+    assert spring == {"2026-03-28": 30, "2026-03-29": 1380, "2026-03-30": 30}
+
+
+def test_pomodoro_pause_resume_break_and_reset(store):
+    start = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    activity = store.create_timed_activity("Study", "2026-09-17")
+    timer = store.start_timer(activity["id"], "pomodoro", None, start)
+    paused = store.pause_timer(activity["id"], timer["revision"], start + timedelta(minutes=3))
+    assert paused["status"] == "paused"
+    assert paused["elapsedSeconds"] == 180
+
+    store.resume_timer(
+        activity["id"], paused["revision"], start + timedelta(minutes=20)
+    )
+    store.reconcile_timers(start + timedelta(minutes=42))
+    state = store.timer_states(start + timedelta(minutes=42))["timers"][0]
+    assert state["phase"] == "short_break"
+    assert store.timed_activities_on("2026-09-17")[0]["dayMinutes"] == 25
+
+    store.reconcile_timers(start + timedelta(minutes=47))
+    ready = store.timer_states(start + timedelta(minutes=47))["timers"][0]
+    assert ready["phase"] == "ready_focus"
+    assert ready["focusNumber"] == 2
+    running = store.start_timer_focus(activity["id"], ready["revision"], start + timedelta(minutes=48))
+    store.cancel_timer(activity["id"], running["revision"], start + timedelta(minutes=49))
+    assert store.timed_activities_on("2026-09-17")[0]["dayMinutes"] == 25
+
+
+def test_timers_are_concurrent_per_activity_and_block_archive(store):
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    study = store.create_timed_activity("Study", "2026-09-17")
+    offline = store.create_timed_activity("Offline", "2026-09-17")
+    first = store.start_timer(study["id"], "pomodoro", None, now)
+    store.start_timer(offline["id"], "countdown", 60, now)
+    assert len(store.timer_states(now)["timers"]) == 2
+    with pytest.raises(DomainError, match="already has"):
+        store.start_timer(study["id"], "countdown", 10, now)
+    with pytest.raises(DomainError, match="Cancel the live timer"):
+        store.archive_timed_activity(study["id"])
+    store.cancel_timer(study["id"], first["revision"], now + timedelta(minutes=1))
+
+
+def test_fourth_pomodoro_uses_long_break(store):
+    now = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    activity = store.create_timed_activity("Study", "2026-09-17")
+    store.start_timer(activity["id"], "pomodoro", None, now)
+    with store.connect() as connection:
+        connection.execute(
+            "UPDATE timed_activity_timers SET focus_number = 4 WHERE activity_id = ?",
+            (activity["id"],),
+        )
+        connection.commit()
+    store.reconcile_timers(now + timedelta(minutes=25))
+    state = store.timer_states(now + timedelta(minutes=25))["timers"][0]
+    assert state["phase"] == "long_break"
+    assert state["targetMinutes"] == 15
+
+
+def test_restoring_backup_discards_unfinished_timer(store):
+    now = datetime.now(UTC)
+    activity = store.create_timed_activity("Study", store.today().isoformat())
+    store.start_timer(activity["id"], "pomodoro", None, now)
+    backup = store.create_backup()
+    assert store.timer_states(now)["timers"]
+    store.restore_server_backup(backup.name, "RESTORE")
+    assert store.timer_states(now)["timers"] == []
 
 
 def test_theme_is_a_shared_database_setting(store):

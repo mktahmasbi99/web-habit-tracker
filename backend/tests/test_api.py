@@ -63,6 +63,41 @@ def test_api_returns_consistent_domain_error(monkeypatch, tmp_path):
     assert response.json() == {"detail": "Habit names cannot be empty."}
 
 
+def test_timer_api_supports_concurrent_modes(monkeypatch, tmp_path):
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "timers.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        today = client.get("/api/config").json()["today"]
+        study = client.post(
+            "/api/timed-activities", json={"name": "Study", "startDate": today}
+        ).json()["id"]
+        offline = client.post(
+            "/api/timed-activities", json={"name": "Offline", "startDate": today}
+        ).json()["id"]
+        pomodoro = client.post(
+            f"/api/timed-activities/{study}/timer", json={"mode": "pomodoro"}
+        )
+        countdown = client.post(
+            f"/api/timed-activities/{offline}/timer",
+            json={"mode": "countdown", "targetMinutes": 600},
+        )
+        assert pomodoro.status_code == 201
+        assert countdown.status_code == 201
+        timers = client.get("/api/timed-activity-timers").json()
+        assert {item["mode"] for item in timers["timers"]} == {"pomodoro", "countdown"}
+        revision = pomodoro.json()["revision"]
+        paused = client.post(
+            f"/api/timed-activities/{study}/timer/pause", json={"revision": revision}
+        )
+        assert paused.json()["status"] == "paused"
+        stale = client.post(
+            f"/api/timed-activities/{study}/timer/resume", json={"revision": revision}
+        )
+        assert stale.status_code == 409
+        assert stale.json()["timer"]["status"] == "paused"
+
+
 def test_static_assets_have_appropriate_cache_headers(tmp_path):
     from app import main
 
