@@ -204,14 +204,16 @@ class HabitDatabase:
                     ON timed_activity_archive_periods(activity_id, archived_at, resurrected_at);
                 CREATE TABLE IF NOT EXISTS timed_activity_timers (
                     activity_id INTEGER PRIMARY KEY,
-                    mode TEXT NOT NULL CHECK (mode IN ('pomodoro', 'countdown')),
-                    phase TEXT NOT NULL CHECK (phase IN ('focus', 'short_break', 'long_break', 'ready_focus', 'countdown')),
+                    mode TEXT NOT NULL CHECK (mode IN ('pomodoro', 'countdown', 'stopwatch')),
+                    phase TEXT NOT NULL CHECK (phase IN ('focus', 'short_break', 'long_break', 'ready_focus', 'countdown', 'stopwatch')),
                     status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'ready')),
-                    target_minutes INTEGER NOT NULL CHECK (target_minutes BETWEEN 1 AND 1440),
+                    target_minutes INTEGER NOT NULL CHECK (target_minutes BETWEEN 0 AND 1440),
                     accumulated_seconds INTEGER NOT NULL DEFAULT 0 CHECK (accumulated_seconds >= 0),
                     focus_number INTEGER NOT NULL DEFAULT 1 CHECK (focus_number BETWEEN 1 AND 4),
                     phase_started_at TEXT,
                     phase_deadline_at TEXT,
+                    interval_enabled INTEGER NOT NULL DEFAULT 0 CHECK (interval_enabled IN (0, 1)),
+                    interval_minutes INTEGER NOT NULL DEFAULT 10 CHECK (interval_minutes BETWEEN 1 AND 1440),
                     revision INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -334,6 +336,53 @@ class HabitDatabase:
             connection.execute(
                 "INSERT OR IGNORE INTO web_schema_migrations(version) VALUES (9)"
             )
+            if connection.execute(
+                "SELECT 1 FROM web_schema_migrations WHERE version = 10"
+            ).fetchone() is None:
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.executescript(
+                    """
+                    CREATE TABLE timed_activity_timers_new (
+                        activity_id INTEGER PRIMARY KEY,
+                        mode TEXT NOT NULL CHECK (mode IN ('pomodoro', 'countdown', 'stopwatch')),
+                        phase TEXT NOT NULL CHECK (phase IN ('focus', 'short_break', 'long_break', 'ready_focus', 'countdown', 'stopwatch')),
+                        status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'ready')),
+                        target_minutes INTEGER NOT NULL CHECK (target_minutes BETWEEN 0 AND 1440),
+                        accumulated_seconds INTEGER NOT NULL DEFAULT 0 CHECK (accumulated_seconds >= 0),
+                        focus_number INTEGER NOT NULL DEFAULT 1 CHECK (focus_number BETWEEN 1 AND 4),
+                        phase_started_at TEXT,
+                        phase_deadline_at TEXT,
+                        interval_enabled INTEGER NOT NULL DEFAULT 0 CHECK (interval_enabled IN (0, 1)),
+                        interval_minutes INTEGER NOT NULL DEFAULT 10 CHECK (interval_minutes BETWEEN 1 AND 1440),
+                        revision INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY (activity_id) REFERENCES timed_activities(id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE timed_activity_timer_segments_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        activity_id INTEGER NOT NULL,
+                        started_at TEXT NOT NULL,
+                        ended_at TEXT,
+                        FOREIGN KEY (activity_id) REFERENCES timed_activity_timers_new(activity_id) ON DELETE CASCADE
+                    );
+                    INSERT INTO timed_activity_timers_new(
+                        activity_id, mode, phase, status, target_minutes, accumulated_seconds,
+                        focus_number, phase_started_at, phase_deadline_at, revision, created_at, updated_at
+                    ) SELECT activity_id, mode, phase, status, target_minutes, accumulated_seconds,
+                        focus_number, phase_started_at, phase_deadline_at, revision, created_at, updated_at
+                    FROM timed_activity_timers;
+                    INSERT INTO timed_activity_timer_segments_new(id, activity_id, started_at, ended_at)
+                        SELECT id, activity_id, started_at, ended_at
+                        FROM timed_activity_timer_segments;
+                    DROP TABLE timed_activity_timer_segments;
+                    DROP TABLE timed_activity_timers;
+                    ALTER TABLE timed_activity_timers_new RENAME TO timed_activity_timers;
+                    ALTER TABLE timed_activity_timer_segments_new RENAME TO timed_activity_timer_segments;
+                    INSERT INTO web_schema_migrations(version) VALUES (10);
+                    """
+                )
+                connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("PRAGMA optimize")
             connection.commit()
 
@@ -637,17 +686,14 @@ class HabitDatabase:
             return 0
         if row["status"] == "paused":
             return row["accumulated_seconds"]
-        target = row["target_minutes"] * 60
         started = HabitDatabase._instant(row["phase_started_at"])
-        return min(
-            target,
-            row["accumulated_seconds"] + max(0, int((now - started).total_seconds())),
-        )
+        elapsed = row["accumulated_seconds"] + max(0, int((now - started).total_seconds()))
+        return elapsed if row["mode"] == "stopwatch" else min(row["target_minutes"] * 60, elapsed)
 
     def _timer_payload(self, row: sqlite3.Row, now: datetime) -> dict:
-        target_seconds = row["target_minutes"] * 60
         elapsed = self._timer_elapsed(row, now)
-        remaining = max(0, target_seconds - elapsed)
+        target_seconds = row["target_minutes"] * 60
+        remaining = max(0, target_seconds - elapsed) if row["mode"] != "stopwatch" else 0
         return {
             "activityId": row["activity_id"], "mode": row["mode"],
             "phase": row["phase"], "status": row["status"],
@@ -657,6 +703,8 @@ class HabitDatabase:
             "focusNumber": row["focus_number"],
             "phaseStartedAt": row["phase_started_at"],
             "phaseDeadlineAt": row["phase_deadline_at"],
+            "intervalEnabled": bool(row["interval_enabled"]),
+            "intervalMinutes": row["interval_minutes"],
             "revision": row["revision"],
         }
 
@@ -795,20 +843,25 @@ class HabitDatabase:
 
     def start_timer(
         self, activity_id: int, mode: str, target_minutes: int | None,
-        now: datetime | None = None,
+        now: datetime | None = None, interval_enabled: bool = False,
+        interval_minutes: int | None = None,
     ) -> dict:
         current = (now or datetime.now(UTC)).astimezone(UTC)
         self.reconcile_timers(current)
         today = current.astimezone(self.settings.timezone).date().isoformat()
-        if mode not in {"pomodoro", "countdown"}:
+        if mode not in {"pomodoro", "countdown", "stopwatch"}:
             raise DomainError("Choose a supported timer.")
         if mode == "countdown" and not target_minutes:
             raise DomainError("Choose a countdown duration.")
-        target = 25 if mode == "pomodoro" else int(target_minutes or 0)
-        if not 1 <= target <= 1440:
+        if mode == "stopwatch" and interval_enabled and not interval_minutes:
+            raise DomainError("Choose a stopwatch interval.")
+        if interval_minutes is not None and not 1 <= interval_minutes <= 1440:
+            raise DomainError("Stopwatch intervals must be between 1 minute and 24 hours.")
+        target = 0 if mode == "stopwatch" else 25 if mode == "pomodoro" else int(target_minutes or 0)
+        if mode != "stopwatch" and not 1 <= target <= 1440:
             raise DomainError("Countdown duration must be between 1 minute and 24 hours.")
-        deadline = current + timedelta(minutes=target)
-        portions = self._split_timer_minutes([(current, deadline)], target)
+        deadline = current + timedelta(minutes=target) if mode != "stopwatch" else None
+        portions = self._split_timer_minutes([(current, deadline)], target) if deadline else {}
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if not self._timed_active(connection, activity_id, today):
@@ -817,17 +870,21 @@ class HabitDatabase:
                 "SELECT 1 FROM timed_activity_timers WHERE activity_id = ?", (activity_id,)
             ).fetchone():
                 raise DomainError("This activity already has a live timer.")
-            self._validate_timer_capacity(connection, activity_id, portions)
+            if portions:
+                self._validate_timer_capacity(connection, activity_id, portions)
             now_text = self._utc_text(current)
             connection.execute(
                 """INSERT INTO timed_activity_timers(
                     activity_id, mode, phase, status, target_minutes, accumulated_seconds,
-                    focus_number, phase_started_at, phase_deadline_at, revision, created_at, updated_at
-                ) VALUES (?, ?, ?, 'running', ?, 0, 1, ?, ?, 1, ?, ?)""",
-                (activity_id, mode, "focus" if mode == "pomodoro" else "countdown",
-                 target, now_text, self._utc_text(deadline), now_text, now_text),
+                    focus_number, phase_started_at, phase_deadline_at, interval_enabled,
+                    interval_minutes, revision, created_at, updated_at
+                ) VALUES (?, ?, ?, 'running', ?, 0, 1, ?, ?, ?, ?, 1, ?, ?)""",
+                (activity_id, mode, "focus" if mode == "pomodoro" else mode,
+                 target, now_text, self._utc_text(deadline) if deadline else None,
+                 int(mode == "stopwatch" and interval_enabled), interval_minutes or 10,
+                 now_text, now_text),
             )
-            if mode == "pomodoro":
+            if mode in {"pomodoro", "stopwatch"}:
                 connection.execute(
                     "INSERT INTO timed_activity_timer_segments(activity_id, started_at) VALUES (?, ?)",
                     (activity_id, now_text),
@@ -843,8 +900,11 @@ class HabitDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = self._timer_row_for_action(connection, activity_id, revision, current)
-            if row["mode"] != "pomodoro" or row["phase"] != "focus" or row["status"] != "running":
-                raise DomainError("Only a running Pomodoro focus can be paused.")
+            if (row["mode"] == "pomodoro" and row["phase"] == "focus" or
+                    row["mode"] == "stopwatch" and row["phase"] == "stopwatch") and row["status"] == "running":
+                pass
+            else:
+                raise DomainError("Only a running Pomodoro focus or Stopwatch can be paused.")
             elapsed = self._timer_elapsed(row, current)
             now_text = self._utc_text(current)
             connection.execute(
@@ -868,8 +928,22 @@ class HabitDatabase:
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = self._timer_row_for_action(connection, activity_id, revision, current)
+            if row["mode"] == "stopwatch" and row["phase"] == "stopwatch" and row["status"] == "paused":
+                now_text = self._utc_text(current)
+                connection.execute(
+                    """UPDATE timed_activity_timers SET status = 'running', phase_started_at = ?,
+                       phase_deadline_at = NULL, revision = revision + 1, updated_at = ?
+                       WHERE activity_id = ?""",
+                    (now_text, now_text, activity_id),
+                )
+                connection.execute(
+                    "INSERT INTO timed_activity_timer_segments(activity_id, started_at) VALUES (?, ?)",
+                    (activity_id, now_text),
+                )
+                connection.commit()
+                return self._timer_state(activity_id, current)
             if row["mode"] != "pomodoro" or row["phase"] != "focus" or row["status"] != "paused":
-                raise DomainError("Only a paused Pomodoro focus can be resumed.")
+                raise DomainError("Only a paused Pomodoro focus or Stopwatch can be resumed.")
             remaining = 25 * 60 - row["accumulated_seconds"]
             deadline = current + timedelta(seconds=remaining)
             completed_segments = connection.execute(
@@ -960,6 +1034,42 @@ class HabitDatabase:
                 "DELETE FROM timed_activity_timers WHERE activity_id = ?", (activity_id,)
             )
             connection.commit()
+
+    def stop_stopwatch(
+        self, activity_id: int, revision: int, now: datetime | None = None
+    ) -> dict:
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._timer_row_for_action(connection, activity_id, revision, current)
+            if row["mode"] != "stopwatch" or row["phase"] != "stopwatch" or row["status"] not in {"running", "paused"}:
+                raise DomainError("Only a Stopwatch can be stopped.")
+            if row["status"] == "running":
+                connection.execute(
+                    "UPDATE timed_activity_timer_segments SET ended_at = ? "
+                    "WHERE activity_id = ? AND ended_at IS NULL",
+                    (self._utc_text(current), activity_id),
+                )
+            segments = connection.execute(
+                "SELECT started_at, ended_at FROM timed_activity_timer_segments "
+                "WHERE activity_id = ? AND ended_at IS NOT NULL ORDER BY id",
+                (activity_id,),
+            ).fetchall()
+            intervals = [
+                (self._instant(segment["started_at"]), self._instant(segment["ended_at"]))
+                for segment in segments
+            ]
+            seconds = sum((end - start).total_seconds() for start, end in intervals)
+            recorded_minutes = int(seconds / 60 + 0.5)
+            portions = self._split_timer_minutes(intervals, recorded_minutes) if recorded_minutes else {}
+            if portions:
+                self._validate_timer_capacity(connection, activity_id, portions)
+                self._insert_timer_entries(connection, activity_id, portions)
+            connection.execute(
+                "DELETE FROM timed_activity_timers WHERE activity_id = ?", (activity_id,)
+            )
+            connection.commit()
+        return {"recordedMinutes": recorded_minutes}
 
     def add_timed_entry(self, activity_id: int, day_value: str, minutes: int) -> dict:
         day = self.parse_day(day_value).isoformat()

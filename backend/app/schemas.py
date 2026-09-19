@@ -34,8 +34,10 @@ class TimedEntryUpdate(BaseModel):
 
 
 class TimerStart(BaseModel):
-    mode: Literal["pomodoro", "countdown"]
+    mode: Literal["pomodoro", "countdown", "stopwatch"]
     targetMinutes: int | None = Field(default=None, ge=1, le=1440)
+    intervalEnabled: bool = False
+    intervalMinutes: int | None = Field(default=None, ge=1, le=1440)
 
 
 class TimerRevision(BaseModel):

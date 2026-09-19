@@ -43,6 +43,39 @@ def test_countdown_splits_at_local_midnight_and_cancel_discards(store):
     assert store.timer_states(later)["timers"] == []
 
 
+def test_stopwatch_pauses_records_nearest_minutes_and_cancel_discards(store):
+    start = datetime(2026, 9, 17, 21, 50, tzinfo=UTC)  # 23:50 in Warsaw
+    activity = store.create_timed_activity("Walk", "2026-09-17")
+    timer = store.start_timer(
+        activity["id"], "stopwatch", None, start,
+        interval_enabled=True, interval_minutes=10,
+    )
+    assert timer["intervalEnabled"] is True
+    assert timer["intervalMinutes"] == 10
+    paused = store.pause_timer(activity["id"], timer["revision"], start + timedelta(minutes=10, seconds=15))
+    assert paused["elapsedSeconds"] == 615
+    resumed = store.resume_timer(activity["id"], paused["revision"], start + timedelta(minutes=20))
+    stopped = store.stop_stopwatch(activity["id"], resumed["revision"], start + timedelta(minutes=35))
+    assert stopped == {"recordedMinutes": 25}
+    with store.connect() as connection:
+        rows = connection.execute(
+            "SELECT entry_date, minutes FROM timed_activity_entries ORDER BY entry_date"
+        ).fetchall()
+    assert [(row["entry_date"], row["minutes"]) for row in rows] == [
+        ("2026-09-17", 10), ("2026-09-18", 15),
+    ]
+
+    timer = store.start_timer(activity["id"], "stopwatch", None, start)
+    store.cancel_timer(activity["id"], timer["revision"], start + timedelta(minutes=1))
+    assert store.timer_states(start)["timers"] == []
+
+
+def test_stopwatch_requires_an_interval_when_alerts_are_enabled(store):
+    activity = store.create_timed_activity("Walk", store.today().isoformat())
+    with pytest.raises(DomainError, match="Choose a stopwatch interval"):
+        store.start_timer(activity["id"], "stopwatch", None, interval_enabled=True)
+
+
 def test_timer_minute_allocation_is_deterministic_across_dst(store):
     tied = store._split_timer_minutes([
         (datetime(2026, 9, 17, 21, 59, 30, tzinfo=UTC),
@@ -166,6 +199,40 @@ def test_theme_migration_reverts_retired_setting_to_system(tmp_path):
             "SELECT updated_at FROM web_app_settings WHERE id = 1"
         ).fetchone()[0] == "2026-09-12 12:00:00"
     assert migrated.update_theme("noir") == "noir"
+
+
+def test_stopwatch_migration_preserves_existing_live_timers(tmp_path):
+    path = tmp_path / "timers-v9.sqlite3"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE web_schema_migrations (version INTEGER PRIMARY KEY);
+            INSERT INTO web_schema_migrations(version) VALUES (9);
+            CREATE TABLE timed_activities (id INTEGER PRIMARY KEY, name TEXT NOT NULL, start_date TEXT NOT NULL, archived_at TEXT, created_at TEXT NOT NULL);
+            INSERT INTO timed_activities VALUES (1, 'Study', '2026-09-17', NULL, '2026-09-17T10:00:00+00:00');
+            CREATE TABLE timed_activity_timers (
+                activity_id INTEGER PRIMARY KEY,
+                mode TEXT NOT NULL CHECK (mode IN ('pomodoro', 'countdown')),
+                phase TEXT NOT NULL CHECK (phase IN ('focus', 'short_break', 'long_break', 'ready_focus', 'countdown')),
+                status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'ready')),
+                target_minutes INTEGER NOT NULL CHECK (target_minutes BETWEEN 1 AND 1440),
+                accumulated_seconds INTEGER NOT NULL DEFAULT 0, focus_number INTEGER NOT NULL DEFAULT 1,
+                phase_started_at TEXT, phase_deadline_at TEXT, revision INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+                FOREIGN KEY (activity_id) REFERENCES timed_activities(id) ON DELETE CASCADE
+            );
+            INSERT INTO timed_activity_timers VALUES (1, 'countdown', 'countdown', 'running', 60, 0, 1, '2026-09-17T10:00:00+00:00', '2026-09-17T11:00:00+00:00', 1, '2026-09-17T10:00:00+00:00', '2026-09-17T10:00:00+00:00');
+            CREATE TABLE timed_activity_timer_segments (id INTEGER PRIMARY KEY, activity_id INTEGER NOT NULL, started_at TEXT NOT NULL, ended_at TEXT, FOREIGN KEY (activity_id) REFERENCES timed_activity_timers(activity_id) ON DELETE CASCADE);
+            INSERT INTO timed_activity_timer_segments VALUES (1, 1, '2026-09-17T10:00:00+00:00', NULL);
+            """
+        )
+    migrated = HabitDatabase(Settings(path, "Europe/Warsaw", ZoneInfo("Europe/Warsaw")))
+    state = migrated.timer_states(datetime(2026, 9, 17, 10, 30, tzinfo=UTC))["timers"]
+    assert state[0]["mode"] == "countdown"
+    assert state[0]["intervalEnabled"] is False
+    with migrated.connect() as connection:
+        assert connection.execute("SELECT 1 FROM web_schema_migrations WHERE version = 10").fetchone()
+        assert connection.execute("SELECT COUNT(*) FROM timed_activity_timer_segments").fetchone()[0] == 1
 
 
 def test_pending_is_no_log_and_status_can_be_undone(store):

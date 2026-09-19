@@ -177,7 +177,10 @@ def timed_activity_timers() -> dict:
 
 @app.post("/api/timed-activities/{activity_id}/timer", status_code=201)
 def start_timed_activity_timer(activity_id: int, payload: TimerStart) -> dict:
-    return database.start_timer(activity_id, payload.mode, payload.targetMinutes)
+    return database.start_timer(
+        activity_id, payload.mode, payload.targetMinutes,
+        interval_enabled=payload.intervalEnabled, interval_minutes=payload.intervalMinutes,
+    )
 
 
 @app.post("/api/timed-activities/{activity_id}/timer/pause")
@@ -198,6 +201,11 @@ def skip_timed_activity_break(activity_id: int, payload: TimerRevision) -> dict:
 @app.post("/api/timed-activities/{activity_id}/timer/start-focus")
 def start_timed_activity_focus(activity_id: int, payload: TimerRevision) -> dict:
     return database.start_timer_focus(activity_id, payload.revision)
+
+
+@app.post("/api/timed-activities/{activity_id}/timer/stop")
+def stop_timed_activity_stopwatch(activity_id: int, payload: TimerRevision) -> dict:
+    return database.stop_stopwatch(activity_id, payload.revision)
 
 
 @app.delete("/api/timed-activities/{activity_id}/timer", status_code=204)

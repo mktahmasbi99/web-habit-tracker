@@ -98,6 +98,36 @@ def test_timer_api_supports_concurrent_modes(monkeypatch, tmp_path):
         assert stale.json()["timer"]["status"] == "paused"
 
 
+def test_stopwatch_api_records_or_cancels(monkeypatch, tmp_path):
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "stopwatch.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    with TestClient(module.app) as client:
+        today = client.get("/api/config").json()["today"]
+        activity = client.post(
+            "/api/timed-activities", json={"name": "Walk", "startDate": today}
+        ).json()["id"]
+        started = client.post(
+            f"/api/timed-activities/{activity}/timer",
+            json={"mode": "stopwatch", "intervalEnabled": True, "intervalMinutes": 10},
+        )
+        assert started.status_code == 201
+        assert started.json()["mode"] == "stopwatch"
+        assert started.json()["intervalEnabled"] is True
+        stopped = client.post(
+            f"/api/timed-activities/{activity}/timer/stop",
+            json={"revision": started.json()["revision"]},
+        )
+        assert stopped.status_code == 200
+        assert stopped.json()["recordedMinutes"] == 0
+
+        invalid = client.post(
+            f"/api/timed-activities/{activity}/timer",
+            json={"mode": "stopwatch", "intervalEnabled": True},
+        )
+        assert invalid.status_code == 400
+
+
 def test_static_assets_have_appropriate_cache_headers(tmp_path):
     from app import main
 

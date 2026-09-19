@@ -18,14 +18,14 @@ export interface TimedActivitySummary {
   id: number; name: string; startDate: string; archived: boolean; archivedAt: string | null; noteCount: number;
 }
 export interface TimedActivityNote { activityId: number; activityName: string; date: string; body: string }
-export type TimerMode = "pomodoro" | "countdown";
-export type TimerPhase = "focus" | "short_break" | "long_break" | "ready_focus" | "countdown";
+export type TimerMode = "pomodoro" | "countdown" | "stopwatch";
+export type TimerPhase = "focus" | "short_break" | "long_break" | "ready_focus" | "countdown" | "stopwatch";
 export type TimerStatus = "running" | "paused" | "ready";
 export interface TimedActivityTimer {
   activityId: number; mode: TimerMode; phase: TimerPhase; status: TimerStatus;
   targetMinutes: number; elapsedSeconds: number; remainingSeconds: number;
   percent: number; focusNumber: number; phaseStartedAt: string | null;
-  phaseDeadlineAt: string | null; revision: number;
+  phaseDeadlineAt: string | null; intervalEnabled: boolean; intervalMinutes: number; revision: number;
 }
 export interface TimedActivityTimers { serverNow: string; timers: TimedActivityTimer[] }
 export interface ActivityLogDay { id: number; name: string; startDate: string; lastCompletedDate: string | null; completed: boolean; hasNote: boolean; archived: boolean }

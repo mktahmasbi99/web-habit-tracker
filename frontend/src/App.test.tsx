@@ -26,6 +26,7 @@ describe("Habit Tracker", () => {
     habitStartDate = "2026-08-26";
     timedActivities = [];
     activityLogs = [];
+    try { window.localStorage?.setItem?.("stopwatch-interval-alert", ""); } catch { /* optional storage */ }
     timerSnapshot = { serverNow: new Date().toISOString(), timers: [] };
     window.history.replaceState(null, "", "/");
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -47,7 +48,8 @@ describe("Habit Tracker", () => {
       if (url === "/api/timed-activity-timers") return ok(timerSnapshot);
       if (/^\/api\/timed-activities\/\d+\/timer$/.test(url) && init?.method === "POST") {
         const id = Number(url.split("/")[3]); const body = JSON.parse(String(init.body));
-        const timer = { activityId: id, mode: body.mode, phase: body.mode === "pomodoro" ? "focus" : "countdown", status: "running", targetMinutes: body.mode === "pomodoro" ? 25 : body.targetMinutes, elapsedSeconds: 0, remainingSeconds: (body.mode === "pomodoro" ? 25 : body.targetMinutes) * 60, percent: 0, focusNumber: 1, phaseStartedAt: timerSnapshot.serverNow, phaseDeadlineAt: new Date(Date.parse(timerSnapshot.serverNow) + (body.mode === "pomodoro" ? 25 : body.targetMinutes) * 60_000).toISOString(), revision: 1 };
+        const targetMinutes = body.mode === "pomodoro" ? 25 : body.mode === "stopwatch" ? 0 : body.targetMinutes;
+        const timer = { activityId: id, mode: body.mode, phase: body.mode === "pomodoro" ? "focus" : body.mode, status: "running", targetMinutes, elapsedSeconds: 0, remainingSeconds: targetMinutes * 60, percent: 0, focusNumber: 1, phaseStartedAt: timerSnapshot.serverNow, phaseDeadlineAt: body.mode === "stopwatch" ? null : new Date(Date.parse(timerSnapshot.serverNow) + targetMinutes * 60_000).toISOString(), intervalEnabled: body.intervalEnabled ?? false, intervalMinutes: body.intervalMinutes ?? 10, revision: 1 };
         timerSnapshot.timers.push(timer); return ok(timer, 201);
       }
       if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
@@ -155,7 +157,7 @@ describe("Habit Tracker", () => {
     expect(document.querySelector(".timed-title-total")).toHaveTextContent("1h 30m");
   });
 
-  it("offers Today-only manual, Pomodoro, and countdown sessions", async () => {
+  it("offers Today-only manual, Pomodoro, countdown, and stopwatch sessions", async () => {
     const user = userEvent.setup();
     timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
     render(<App />);
@@ -166,6 +168,23 @@ describe("Habit Tracker", () => {
     expect(await screen.findByText("Focus 1 of 4")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     expect(screen.getByLabelText("Pomodoro timer active")).toBeInTheDocument();
+  });
+
+  it("starts a stopwatch with its remembered interval-beep choice", async () => {
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("radio", { name: "Stopwatch" }));
+    const interval = screen.getByRole("checkbox", { name: "Beep at each interval" });
+    expect(interval).not.toBeChecked();
+    await user.click(interval);
+    await user.click(screen.getByRole("button", { name: "Start stopwatch" }));
+    expect(await screen.findByText("Stopwatch")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
+    const request = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(([url, init]) => String(url) === "/api/timed-activities/10/timer" && (init as RequestInit).method === "POST");
+    expect(JSON.parse(String((request?.[1] as RequestInit).body))).toMatchObject({ mode: "stopwatch", intervalEnabled: true, intervalMinutes: 10 });
   });
 
   it("shows countdown progress on the activity card", async () => {
