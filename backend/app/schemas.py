@@ -44,6 +44,11 @@ class TimerRevision(BaseModel):
     revision: int = Field(ge=1)
 
 
+class StopwatchAlertUpdate(TimerRevision):
+    intervalEnabled: bool
+    intervalMinutes: int | None = Field(default=None, ge=1, le=1440)
+
+
 class BackupSettingsUpdate(BaseModel):
     dailyEnabled: bool
     dailyTime: str

@@ -6,6 +6,10 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Allow Stopwatch interval beeps to be enabled, disabled, and rescheduled while a Stopwatch is running or paused.
+
+- Add Stop to active and paused Pomodoro focus controls. Stop records completed whole minutes, while Cancel continues to discard the unfinished focus.
+
 - Add a Notes button to daily habit details, opening that habit’s complete dated note history with a + action to create or edit today’s note directly using the server’s date.
 
 - Add persistent Today-only Stopwatch sessions for Timed activities, with pause/resume, stop-to-record nearest-minute entries, cancel-to-discard behavior, local interval-beep preferences, cross-device state, and compact elapsed-time indicators.

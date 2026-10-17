@@ -31,8 +31,8 @@ Daily habit details include a Notes button opening that habit’s complete note 
 - Daily habits use binary Done, Missed, and Pending states. Timed activities are observational and never imply success or failure.
 - A missing timed-activity entry means zero. Multiple sessions can be logged per day, use whole minutes, and may total at most 24 hours per activity per day.
 - Timed entries and notes can be changed on any active date through today; future dates reject them.
-- Live Pomodoro, countdown, and stopwatch controls are available only on Today. Each activity can run one timer, while different activities can run concurrently; Pomodoro and countdown reserve projected daily capacity, while Stopwatch validates capacity when stopped.
-- Pomodoro uses 25-minute focus periods, 5-minute breaks, and a 15-minute break after the fourth focus. Countdown targets range from 1 minute to 24 hours and record nothing when cancelled.
+- Live Pomodoro, countdown, and stopwatch controls are available only on Today. Each activity can run one timer, while different activities can run concurrently; Pomodoro and countdown reserve projected daily capacity, while Stopwatch validates capacity when stopped. Stopwatch interval beeps can be enabled, disabled, or given a new interval while the stopwatch runs or is paused.
+- Pomodoro uses 25-minute focus periods, 5-minute breaks, and a 15-minute break after the fourth focus. Stopping a focus early records its completed whole minutes; cancelling discards that unfinished focus. Countdown targets range from 1 minute to 24 hours and record nothing when cancelled.
 - Stopwatch sessions pause and resume, record elapsed active time rounded to the nearest minute when stopped, and discard it when cancelled. They can beep at a chosen 1-minute to 24-hour interval; browser audio and notifications are best-effort while a browser is open and cannot be guaranteed after it is closed.
 - Pending is the default and is represented by no saved log row.
 - Any date can be changed or undone.

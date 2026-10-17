@@ -15,6 +15,54 @@ test("creates and completes a habit", async ({ page }) => {
   await expect(doneButton).toHaveAttribute("aria-pressed", "true");
 });
 
+test("stops a paused Pomodoro focus and retains its completed minutes", async ({ page, request }) => {
+  const { today } = await (await request.get("/api/config")).json();
+  const name = `Pomodoro ${Date.now()}`;
+  const { id } = await (await request.post("/api/timed-activities", { data: { name, startDate: today } })).json();
+  const started = await (await request.post(`/api/timed-activities/${id}/timer`, { data: { mode: "pomodoro" } })).json();
+  await request.post(`/api/timed-activities/${id}/timer/pause`, { data: { revision: started.revision } });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: `Open ${name}` }).click();
+  await expect(page.getByRole("button", { name: "Resume" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Stop", exact: true }).click();
+  await expect(page.getByText("Stopped without recording a completed minute.")).toBeVisible();
+  await page.getByRole("radio", { name: "Pomodoro" }).click();
+  await expect(page.getByRole("button", { name: "Start focus" })).toBeVisible();
+
+  await request.post(`/api/timed-activities/${id}/timer`, { data: { mode: "pomodoro" } });
+  await page.reload();
+  await page.getByRole("button", { name: `Open ${name}` }).click();
+  await expect(page.getByRole("button", { name: "Cancel Pomodoro" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel Pomodoro" }).click();
+  await page.getByRole("radio", { name: "Pomodoro" }).click();
+  await expect(page.getByRole("button", { name: "Start focus" })).toBeVisible();
+});
+
+test("updates interval beeps while a stopwatch is live", async ({ page, request }) => {
+  const { today } = await (await request.get("/api/config")).json();
+  const name = `Stopwatch ${Date.now()}`;
+  const { id } = await (await request.post("/api/timed-activities", { data: { name, startDate: today } })).json();
+  await request.post(`/api/timed-activities/${id}/timer`, { data: { mode: "stopwatch" } });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: `Open ${name}` }).click();
+  const alerts = page.locator(".live-stopwatch-alerts");
+  const toggle = alerts.getByRole("checkbox", { name: "Beep at each interval" });
+  const enabled = page.waitForResponse(response => response.url().endsWith(`/api/timed-activities/${id}/timer/stopwatch-alert`) && response.request().method() === "PATCH");
+  await toggle.check();
+  await enabled;
+  await alerts.getByRole("spinbutton", { name: "Minutes" }).fill("5");
+  await page.waitForResponse(response => response.url().endsWith(`/api/timed-activities/${id}/timer/stopwatch-alert`) && response.request().method() === "PATCH");
+  await expect(alerts.getByRole("spinbutton", { name: "Minutes" })).toHaveValue("5");
+
+  const disabled = page.waitForResponse(response => response.url().endsWith(`/api/timed-activities/${id}/timer/stopwatch-alert`) && response.request().method() === "PATCH");
+  await toggle.uncheck();
+  await disabled;
+  await expect(alerts.getByText("Interval duration")).toBeHidden();
+});
+
 test("shows the import safeguards", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "More" }).click();

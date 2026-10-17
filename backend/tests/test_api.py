@@ -114,9 +114,15 @@ def test_stopwatch_api_records_or_cancels(monkeypatch, tmp_path):
         assert started.status_code == 201
         assert started.json()["mode"] == "stopwatch"
         assert started.json()["intervalEnabled"] is True
+        changed = client.patch(
+            f"/api/timed-activities/{activity}/timer/stopwatch-alert",
+            json={"revision": started.json()["revision"], "intervalEnabled": True, "intervalMinutes": 5},
+        )
+        assert changed.status_code == 200
+        assert changed.json()["intervalMinutes"] == 5
         stopped = client.post(
             f"/api/timed-activities/{activity}/timer/stop",
-            json={"revision": started.json()["revision"]},
+            json={"revision": changed.json()["revision"]},
         )
         assert stopped.status_code == 200
         assert stopped.json()["recordedMinutes"] == 0

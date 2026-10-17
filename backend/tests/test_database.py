@@ -76,6 +76,27 @@ def test_stopwatch_requires_an_interval_when_alerts_are_enabled(store):
         store.start_timer(activity["id"], "stopwatch", None, interval_enabled=True)
 
 
+def test_stopwatch_beep_settings_can_change_while_running_or_paused(store):
+    start = datetime(2026, 9, 17, 10, tzinfo=UTC)
+    activity = store.create_timed_activity("Walk", "2026-09-17")
+    timer = store.start_timer(activity["id"], "stopwatch", None, start)
+    enabled = store.update_stopwatch_alert(activity["id"], timer["revision"], True, 10, start)
+    assert enabled["intervalEnabled"] is True
+    assert enabled["intervalMinutes"] == 10
+    paused = store.pause_timer(activity["id"], enabled["revision"], start + timedelta(minutes=1))
+    changed = store.update_stopwatch_alert(activity["id"], paused["revision"], True, 25, start + timedelta(minutes=1))
+    assert changed["intervalEnabled"] is True
+    assert changed["intervalMinutes"] == 25
+    disabled = store.update_stopwatch_alert(activity["id"], changed["revision"], False, None, start + timedelta(minutes=1))
+    assert disabled["intervalEnabled"] is False
+    assert disabled["intervalMinutes"] == 25
+
+    store.cancel_timer(activity["id"], disabled["revision"], start + timedelta(minutes=1))
+    other = store.start_timer(activity["id"], "pomodoro", None, start + timedelta(hours=1))
+    with pytest.raises(DomainError, match="Only a running or paused Stopwatch"):
+        store.update_stopwatch_alert(activity["id"], other["revision"], True, 5, start + timedelta(hours=1))
+
+
 def test_timer_minute_allocation_is_deterministic_across_dst(store):
     tied = store._split_timer_minutes([
         (datetime(2026, 9, 17, 21, 59, 30, tzinfo=UTC),
@@ -114,6 +135,26 @@ def test_pomodoro_pause_resume_break_and_reset(store):
     store.cancel_timer(activity["id"], running["revision"], start + timedelta(minutes=49))
     assert store.timed_activities_on("2026-09-17")[0]["dayMinutes"] == 25
 
+
+def test_stopping_pomodoro_focus_records_elapsed_whole_minutes_and_cancel_discards(store):
+    start = datetime(2026, 9, 17, 21, 50, tzinfo=UTC)  # 23:50 in Warsaw
+    activity = store.create_timed_activity("Study", "2026-09-17")
+    timer = store.start_timer(activity["id"], "pomodoro", None, start)
+    paused = store.pause_timer(
+        activity["id"], timer["revision"], start + timedelta(minutes=10, seconds=40)
+    )
+    stopped = store.stop_pomodoro(activity["id"], paused["revision"], start + timedelta(minutes=20))
+    assert stopped == {"recordedMinutes": 10}
+    with store.connect() as connection:
+        rows = connection.execute(
+            "SELECT entry_date, minutes FROM timed_activity_entries ORDER BY entry_date"
+        ).fetchall()
+    assert [(row["entry_date"], row["minutes"]) for row in rows] == [("2026-09-17", 10)]
+    assert store.timer_states(start)["timers"] == []
+
+    timer = store.start_timer(activity["id"], "pomodoro", None, start + timedelta(hours=1))
+    store.cancel_timer(activity["id"], timer["revision"], start + timedelta(hours=1, minutes=20))
+    assert store.timed_activities_on("2026-09-17")[0]["dayMinutes"] == 10
 
 def test_timers_are_concurrent_per_activity_and_block_archive(store):
     now = datetime.now(UTC)

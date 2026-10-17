@@ -60,6 +60,15 @@ export function useTimedActivityTimers(enabled: boolean, changed: () => void, re
       }
       const changedState = previous.current.size !== nextMap.size || [...nextMap].some(([id, timer]) => previous.current.get(id)?.revision !== timer.revision);
       if (previous.current.size && changedState) changedRef.current();
+      for (const timer of next.timers) {
+        const old = previous.current.get(timer.activityId);
+        if (timer.mode !== "stopwatch" || old?.intervalEnabled === timer.intervalEnabled && old?.intervalMinutes === timer.intervalMinutes) continue;
+        if (timer.intervalEnabled) announcedIntervals.current.set(
+          timer.activityId,
+          Math.floor(liveTimer(timer, next.serverNow, Date.now()).elapsedSeconds / (timer.intervalMinutes * 60)),
+        );
+        else announcedIntervals.current.delete(timer.activityId);
+      }
       for (const id of announcedIntervals.current.keys()) if (!nextMap.has(id)) announcedIntervals.current.delete(id);
       previous.current = nextMap; setSnapshot(next); setClock(Date.now());
     } catch (error) { reportError(error); }
@@ -81,7 +90,13 @@ export function useTimedActivityTimers(enabled: boolean, changed: () => void, re
   }, [clock, snapshot]);
   const replace = useCallback((timer: TimedActivityTimer | null, activityId: number) => {
     setSnapshot(current => ({ ...current, serverNow: new Date().toISOString(), timers: timer ? [...current.timers.filter(item => item.activityId !== activityId), timer] : current.timers.filter(item => item.activityId !== activityId) }));
-    if (timer) { const wasKnown = previous.current.has(activityId); previous.current.set(activityId, timer); if (timer.mode === "stopwatch" && !wasKnown) announcedIntervals.current.set(activityId, 0); }
+    if (timer) {
+      const old = previous.current.get(activityId); const wasKnown = Boolean(old);
+      previous.current.set(activityId, timer);
+      if (timer.mode === "stopwatch" && (!wasKnown || old?.intervalEnabled !== timer.intervalEnabled || old?.intervalMinutes !== timer.intervalMinutes)) {
+        announcedIntervals.current.set(activityId, timer.intervalEnabled ? Math.floor(timer.elapsedSeconds / (timer.intervalMinutes * 60)) : 0);
+      }
+    }
     else { previous.current.delete(activityId); announcedIntervals.current.delete(activityId); }
   }, []);
   return { snapshot, clock, load, replace };

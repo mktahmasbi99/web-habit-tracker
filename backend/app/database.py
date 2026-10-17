@@ -973,6 +973,31 @@ class HabitDatabase:
             connection.commit()
         return self._timer_state(activity_id, current)
 
+    def update_stopwatch_alert(
+        self, activity_id: int, revision: int, interval_enabled: bool,
+        interval_minutes: int | None, now: datetime | None = None,
+    ) -> dict:
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._timer_row_for_action(connection, activity_id, revision, current)
+            if (row["mode"] != "stopwatch" or row["phase"] != "stopwatch"
+                    or row["status"] not in {"running", "paused"}):
+                raise DomainError("Only a running or paused Stopwatch can change beep settings.")
+            if interval_enabled and interval_minutes is None:
+                raise DomainError("Choose a stopwatch interval.")
+            minutes = interval_minutes if interval_minutes is not None else row["interval_minutes"]
+            if not 1 <= minutes <= 1440:
+                raise DomainError("Stopwatch intervals must be between 1 minute and 24 hours.")
+            now_text = self._utc_text(current)
+            connection.execute(
+                """UPDATE timed_activity_timers SET interval_enabled = ?, interval_minutes = ?,
+                   revision = revision + 1, updated_at = ? WHERE activity_id = ?""",
+                (int(interval_enabled), minutes, now_text, activity_id),
+            )
+            connection.commit()
+        return self._timer_state(activity_id, current)
+
     def skip_timer_break(
         self, activity_id: int, revision: int, now: datetime | None = None
     ) -> dict:
@@ -1070,6 +1095,56 @@ class HabitDatabase:
             )
             connection.commit()
         return {"recordedMinutes": recorded_minutes}
+
+    def stop_pomodoro(
+        self, activity_id: int, revision: int, now: datetime | None = None
+    ) -> dict:
+        """Finish a focus period early and record its completed whole minutes."""
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._timer_row_for_action(connection, activity_id, revision, current)
+            if (row["mode"] != "pomodoro" or row["phase"] != "focus"
+                    or row["status"] not in {"running", "paused"}):
+                raise DomainError("Only a Pomodoro focus can be stopped.")
+            if row["status"] == "running":
+                connection.execute(
+                    "UPDATE timed_activity_timer_segments SET ended_at = ? "
+                    "WHERE activity_id = ? AND ended_at IS NULL",
+                    (self._utc_text(current), activity_id),
+                )
+            segments = connection.execute(
+                "SELECT started_at, ended_at FROM timed_activity_timer_segments "
+                "WHERE activity_id = ? AND ended_at IS NOT NULL ORDER BY id",
+                (activity_id,),
+            ).fetchall()
+            intervals = [
+                (self._instant(segment["started_at"]), self._instant(segment["ended_at"]))
+                for segment in segments
+            ]
+            seconds = sum((end - start).total_seconds() for start, end in intervals)
+            recorded_minutes = int(seconds // 60)
+            portions = self._split_timer_minutes(intervals, recorded_minutes) if recorded_minutes else {}
+            if portions:
+                self._validate_timer_capacity(connection, activity_id, portions)
+                self._insert_timer_entries(connection, activity_id, portions)
+            connection.execute(
+                "DELETE FROM timed_activity_timers WHERE activity_id = ?", (activity_id,)
+            )
+            connection.commit()
+        return {"recordedMinutes": recorded_minutes}
+
+    def stop_timer(
+        self, activity_id: int, revision: int, now: datetime | None = None
+    ) -> dict:
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        with self.connect() as connection:
+            row = self._timer_row_for_action(connection, activity_id, revision, current)
+        if row["mode"] == "stopwatch":
+            return self.stop_stopwatch(activity_id, revision, current)
+        if row["mode"] == "pomodoro":
+            return self.stop_pomodoro(activity_id, revision, current)
+        raise DomainError("Only a Pomodoro focus or Stopwatch can be stopped.")
 
     def add_timed_entry(self, activity_id: int, day_value: str, minutes: int) -> dict:
         day = self.parse_day(day_value).isoformat()

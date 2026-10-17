@@ -23,6 +23,7 @@ from .schemas import (
     NoteUpdate,
     StatusUpdate,
     ThemeUpdate,
+    StopwatchAlertUpdate,
     TimedEntryUpdate,
     TimerRevision,
     TimerStart,
@@ -193,6 +194,15 @@ def resume_timed_activity_timer(activity_id: int, payload: TimerRevision) -> dic
     return database.resume_timer(activity_id, payload.revision)
 
 
+@app.patch("/api/timed-activities/{activity_id}/timer/stopwatch-alert")
+def update_timed_activity_stopwatch_alert(
+    activity_id: int, payload: StopwatchAlertUpdate
+) -> dict:
+    return database.update_stopwatch_alert(
+        activity_id, payload.revision, payload.intervalEnabled, payload.intervalMinutes
+    )
+
+
 @app.post("/api/timed-activities/{activity_id}/timer/skip-break")
 def skip_timed_activity_break(activity_id: int, payload: TimerRevision) -> dict:
     return database.skip_timer_break(activity_id, payload.revision)
@@ -204,8 +214,8 @@ def start_timed_activity_focus(activity_id: int, payload: TimerRevision) -> dict
 
 
 @app.post("/api/timed-activities/{activity_id}/timer/stop")
-def stop_timed_activity_stopwatch(activity_id: int, payload: TimerRevision) -> dict:
-    return database.stop_stopwatch(activity_id, payload.revision)
+def stop_timed_activity_timer(activity_id: int, payload: TimerRevision) -> dict:
+    return database.stop_timer(activity_id, payload.revision)
 
 
 @app.delete("/api/timed-activities/{activity_id}/timer", status_code=204)
