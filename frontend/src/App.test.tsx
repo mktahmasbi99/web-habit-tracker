@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 const ok = (value: unknown, status = 200) => Promise.resolve(new Response(
@@ -17,6 +17,7 @@ let activityLogs: unknown[];
 let timerSnapshot: { serverNow: string; timers: Array<Record<string, unknown>> };
 
 describe("Habit Tracker", () => {
+  afterEach(() => vi.restoreAllMocks());
   beforeEach(() => {
     document.documentElement.dataset.theme = "";
     noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "", exists: false, archived: false };
@@ -59,7 +60,7 @@ describe("Habit Tracker", () => {
         const timer = { activityId: id, mode: body.mode, phase: body.mode === "pomodoro" ? "focus" : body.mode, status: "running", targetMinutes, elapsedSeconds: 0, remainingSeconds: targetMinutes * 60, percent: 0, focusNumber: 1, phaseStartedAt: timerSnapshot.serverNow, phaseDeadlineAt: body.mode === "stopwatch" ? null : new Date(Date.parse(timerSnapshot.serverNow) + targetMinutes * 60_000).toISOString(), intervalEnabled: body.intervalEnabled ?? false, intervalMinutes: body.intervalMinutes ?? 10, revision: 1 };
         timerSnapshot.timers.push(timer); return ok(timer, 201);
       }
-      if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: 90, entries: [{ id: 100, minutes: 90 }], active: true }], note: "" });
+      if (url === "/api/timed-activities/10/weeks/2026-08-26") { const minutes = Number((timedActivities.find(item => (item as { id?: number }).id === 10) as { dayMinutes?: number } | undefined)?.dayMinutes ?? 90); return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes, entries: minutes ? [{ id: 100, minutes }] : [], active: true }], note: "" }); }
       if (url === "/api/timed-activities/10/weeks/2026-08-25") return ok({ id: 10, name: "Study", startDate: "2026-08-25", selectedDate: "2026-08-25", days: [{ date: "2026-08-25", minutes: 30, entries: [{ id: 99, minutes: 30 }], active: true }], note: "" });
       if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
       if (url === "/api/activity-logs") return ok([]);
@@ -183,6 +184,39 @@ describe("Habit Tracker", () => {
     expect(await screen.findByText("Focus 1 of 4")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
     expect(screen.getByLabelText("Pomodoro timer active")).toBeInTheDocument();
+  });
+
+  it("previews a countdown's end time in the configured timezone", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-26T13:00:00Z"));
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("radio", { name: "Countdown" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Hours" }), "3");
+    expect(await screen.findByText("Ends at 18:00")).toBeInTheDocument();
+  });
+
+  it("labels a countdown that ends tomorrow", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-26T20:30:00Z"));
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 0, weekMinutes: 0, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("radio", { name: "Countdown" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Hours" }), "3");
+    expect(await screen.findByText("Ends tomorrow at 01:30")).toBeInTheDocument();
+  });
+
+  it("warns when a countdown exceeds today's remaining activity quota", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-26T13:00:00Z"));
+    const user = userEvent.setup();
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 1000, weekMinutes: 1000, hasNote: false, archived: false }];
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("radio", { name: "Countdown" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Hours" }), "8");
+    expect(await screen.findByRole("status")).toHaveTextContent("This countdown exceeds today’s quota by 40m");
   });
 
   it("stops a paused Pomodoro focus and records its elapsed minutes", async () => {

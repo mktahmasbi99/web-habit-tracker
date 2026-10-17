@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Preview a countdown's end time while setting its duration, including tomorrow/date context after midnight, and warn when its portion of today would exceed the timed activity's remaining daily quota.
+
 - Remove visible main-navigation labels on phone and desktop while retaining accessible names, hover tooltips, and the notification count badge.
 
 - Allow Stopwatch interval beeps to be enabled, disabled, and rescheduled while a Stopwatch is running or paused.

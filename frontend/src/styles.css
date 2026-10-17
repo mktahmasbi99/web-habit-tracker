@@ -163,3 +163,6 @@ input, textarea, select { scroll-margin-block: 80px; }
 .activity-log-day.inactive { color: var(--tertiary); cursor: default; }
 
 .habit-notes-empty { padding: 32px 16px; text-align: center; color: var(--secondary); }
+.countdown-preview { display: grid; gap: 5px; margin: -10px 0 22px; padding: 11px 12px; border-radius: 11px; background: var(--soft-fill); font-variant-numeric: tabular-nums; }
+.countdown-preview strong { font-size: .92rem; }
+.countdown-preview p { margin: 0; color: var(--missed); font-size: .8rem; line-height: 1.4; }
