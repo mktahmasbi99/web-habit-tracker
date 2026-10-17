@@ -18,6 +18,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
 - Dedicated Management navigation divided into active and archived Daily habits and Timed activities
+- Icon-only main navigation with accessible button names, hover tooltips, and an unresolved-date count badge
 - Unresolved past-date notifications inside the app
 - Validated import of compatible terminal/iPhone SQLite databases
 - Automatic safety backup before an imported database replaces live data

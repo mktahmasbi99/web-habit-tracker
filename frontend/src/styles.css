@@ -18,7 +18,7 @@
 :root[data-theme="noir"] .calendar-day.today { box-shadow: inset 0 0 0 2px var(--accent), 0 0 12px #e2bf7866; }:root[data-theme="noir"] .tab-bar { background: #111217f2; border-color: var(--separator); backdrop-filter: blur(18px); }:root[data-theme="noir"] .habit-detail-view { background: transparent; }:root[data-theme="noir"] .modal-backdrop { background: #020304d9; backdrop-filter: blur(5px); }
 :root[data-theme="retro"] { color-scheme: dark; --accent: #ffe16a; --done: #8be85f; --pending: #ffae43; --missed: #ff6473; --background: #04144a; --surface: #0b2c70; --raised: #123b85; --label: #f7f7d5; --secondary: #b8d9ff; --tertiary: #78a6de; --separator: #3973c5; --fill: #16468e; --soft-fill: #08235d; --shadow: #02091fdd; }
 :root[data-theme="retro"] body { background-color: var(--background); background-image: linear-gradient(#03165ab8, #021346c9), url("/themes/pixel-sunset.png"); background-position: center, center bottom; background-size: cover, cover; background-attachment: fixed, fixed; image-rendering: pixelated; }
-:root[data-theme="retro"] h1, :root[data-theme="retro"] h2, :root[data-theme="retro"] h3, :root[data-theme="retro"] button, :root[data-theme="retro"] .tab-label { font-family: ui-monospace, Menlo, Monaco, "Courier New", monospace; font-weight: 800; letter-spacing: .045em; text-shadow: 1px 1px 0 #04144a; }
+:root[data-theme="retro"] h1, :root[data-theme="retro"] h2, :root[data-theme="retro"] h3, :root[data-theme="retro"] button { font-family: ui-monospace, Menlo, Monaco, "Courier New", monospace; font-weight: 800; letter-spacing: .045em; text-shadow: 1px 1px 0 #04144a; }
 :root[data-theme="retro"] .habit-card, :root[data-theme="retro"] .inset-list, :root[data-theme="retro"] .settings-group, :root[data-theme="retro"] .modal, :root[data-theme="retro"] .detail-facts, :root[data-theme="retro"] .note-detail-body { border: 2px solid var(--separator); border-radius: 4px; box-shadow: 4px 4px 0 #020d36, inset 0 0 0 1px #93d8ff2b; }
 :root[data-theme="retro"] .status-button, :root[data-theme="retro"] .form-submit, :root[data-theme="retro"] .primary-settings-button, :root[data-theme="retro"] .save-settings-button, :root[data-theme="retro"] .add-button, :root[data-theme="retro"] .danger-button { border-radius: 3px; box-shadow: 3px 3px 0 #020d36; }
 :root[data-theme="retro"] .add-button, :root[data-theme="retro"] .form-submit, :root[data-theme="retro"] .primary-settings-button, :root[data-theme="retro"] .save-settings-button { background: #f8b740; color: #071541; text-shadow: none; }
@@ -112,8 +112,7 @@ input, textarea, select { scroll-margin-block: 80px; }
 .duration-form, .timed-entry-row, .habit-actions, .status-group { flex-wrap: wrap; }
 .status-group { min-width: 0; }
 .tab-bar { padding-left: max(5px, env(safe-area-inset-left)); padding-right: max(5px, env(safe-area-inset-right)); }
-.tab-bar button { min-height: 44px; gap: 3px; }
-.tab-label { font-size: .65rem; overflow-wrap: anywhere; }
+.tab-bar button { min-height: 44px; }
 .modal-backdrop { margin: 0; border: 0; width: 100%; max-width: none; height: 100%; max-height: none; color: var(--label); background: transparent; backdrop-filter: none; padding: max(12px, env(safe-area-inset-top)) max(0px, env(safe-area-inset-right)) 0 max(0px, env(safe-area-inset-left)); }
 .modal-backdrop:not([open]) { display: none; }
 .modal-backdrop::backdrop { background: #0007; backdrop-filter: blur(4px); }

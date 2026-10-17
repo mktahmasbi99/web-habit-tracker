@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Remove visible main-navigation labels on phone and desktop while retaining accessible names, hover tooltips, and the notification count badge.
+
 - Allow Stopwatch interval beeps to be enabled, disabled, and rescheduled while a Stopwatch is running or paused.
 
 - Add Stop to active and paused Pomodoro focus controls. Stop records completed whole minutes, while Cancel continues to discard the unfinished focus.

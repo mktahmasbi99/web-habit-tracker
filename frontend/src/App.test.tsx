@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -85,6 +85,14 @@ describe("Habit Tracker", () => {
     expect(await screen.findByRole("heading", { name: "Read" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
+    const navigation = within(screen.getByRole("navigation", { name: "Main navigation" }));
+    for (const name of ["Today", "Notes", "Manage", "Notifications", "More"]) {
+      const button = navigation.getByRole("button", { name: new RegExp(`^${name}(,|$)`) });
+      expect(button).toHaveAttribute("title", name);
+      expect(button.querySelector("svg")).toBeInTheDocument();
+      expect(button).not.toHaveTextContent(name);
+    }
+    expect(await navigation.findByRole("button", { name: "Notifications, 1 unresolved dates" })).toHaveTextContent("1");
   });
 
   it("keeps the current screen visible and marks connection loss", async () => {
