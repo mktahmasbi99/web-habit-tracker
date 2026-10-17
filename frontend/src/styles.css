@@ -162,3 +162,5 @@ input, textarea, select { scroll-margin-block: 80px; }
 .habit-menu button svg { width: 18px; height: 18px; }
 .activity-log-day.active { color: var(--label); }
 .activity-log-day.inactive { color: var(--tertiary); cursor: default; }
+
+.habit-notes-empty { padding: 32px 16px; text-align: center; color: var(--secondary); }

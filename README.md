@@ -24,6 +24,8 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Responsive phone and desktop layouts with a shared skin selection; System follows each device's light or dark mode
 - Docker image and NAS Compose deployment
 
+Daily habit details include a Notes button opening that habit’s complete note history, newest first, including earlier active periods. Use + in this history to open today’s note directly, using the server’s date. If today already has a note, it opens for editing. New notes require an active date; existing notes remain editable. The Today-card note shortcut and global Notes tab remain available.
+
 ## Status rules
 
 - Daily habits use binary Done, Missed, and Pending states. Timed activities are observational and never imply success or failure.

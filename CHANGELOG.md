@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add a Notes button to daily habit details, opening that habit’s complete dated note history with a + action to create or edit today’s note directly using the server’s date.
+
 - Add persistent Today-only Stopwatch sessions for Timed activities, with pause/resume, stop-to-record nearest-minute entries, cancel-to-discard behavior, local interval-beep preferences, cross-device state, and compact elapsed-time indicators.
 
 - Add persistent, concurrent Today-only Pomodoro and countdown timers to Timed activities, with cross-device state, pause/resume and break controls, automatic whole-minute entries split at the configured timezone's midnight, compact card indicators, optional local alerts, and ordinary editing or deletion of completed logs.

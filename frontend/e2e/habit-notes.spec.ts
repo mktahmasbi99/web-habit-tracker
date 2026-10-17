@@ -1,0 +1,36 @@
+import { expect, test } from "@playwright/test";
+
+test("habit notes support adding today, editing, deletion and Back navigation", async ({ page, request }) => {
+  const { today } = await (await request.get("/api/config")).json();
+  const name = `Notes ${Date.now()}`;
+  const { id } = await (await request.post("/api/habits", { data: { name, startDate: today } })).json();
+  const { id: otherId } = await (await request.post("/api/habits", { data: { name: `Other ${Date.now()}`, startDate: today } })).json();
+  await request.put(`/api/habits/${otherId}/days/${today}/note`, { data: { body: "Other habit only" } });
+  await page.goto(`/habits/${id}`);
+  await page.getByRole("button", { name: `Notes for ${name}` }).click();
+  await expect(page).toHaveURL(new RegExp(`/habits/${id}/notes$`));
+  await expect(page.getByText("No notes yet")).toBeVisible();
+  await expect(page.getByText("Other habit only")).toBeHidden();
+  await page.getByRole("button", { name: "Add habit note" }).click();
+  await expect(page).toHaveURL(new RegExp(`/habits/${id}/notes/${today}$`));
+  await page.getByRole("textbox", { name: "Note", exact: true }).fill("A note for this habit");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/habits/${id}/notes$`));
+  await expect(page.getByRole("button", { name: /A note for this habit/ })).toBeVisible();
+  await page.getByRole("button", { name: "Add habit note" }).click();
+  await expect(page.getByRole("textbox", { name: "Note", exact: true })).toHaveValue("A note for this habit");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: /A note for this habit/ }).click();
+  await page.goBack();
+  await expect(page.getByRole("button", { name: /A note for this habit/ })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("button", { name: /A note for this habit/ })).toBeVisible();
+  await page.getByRole("button", { name: /A note for this habit/ }).click();
+  await page.getByRole("button", { name: "More note options" }).click();
+  await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(page.getByText("No notes yet")).toBeVisible();
+  await page.getByRole("button", { name: "Back to habit details" }).click();
+  await expect(page).toHaveURL(new RegExp(`/habits/${id}$`));
+  await expect(page.getByRole("button", { name: `Notes for ${name}` })).toBeVisible();
+});
