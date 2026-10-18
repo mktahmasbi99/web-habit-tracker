@@ -16,6 +16,7 @@ from .schemas import (
     BackupAction,
     BackupDelete,
     BackupSettingsUpdate,
+    CardOrderUpdate,
     HabitCreate,
     HabitDelete,
     HabitRename,
@@ -114,6 +115,11 @@ def config() -> dict[str, str]:
 @app.put("/api/settings/theme")
 def update_theme(payload: ThemeUpdate) -> dict[str, str]:
     return {"theme": database.update_theme(payload.theme)}
+
+
+@app.put("/api/card-orders/{entity_type}")
+def save_card_order(entity_type: str, payload: CardOrderUpdate) -> dict[str, list[int]]:
+    return {"ids": database.save_card_order(entity_type, payload.ids)}
 
 
 @app.get("/api/days/{day}/habits")

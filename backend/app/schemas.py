@@ -63,6 +63,10 @@ class ThemeUpdate(BaseModel):
     theme: Literal["system", "noir", "retro"]
 
 
+class CardOrderUpdate(BaseModel):
+    ids: list[int] = Field(max_length=500)
+
+
 class BackupAction(BaseModel):
     filename: str
     confirmation: str

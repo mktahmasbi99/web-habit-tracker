@@ -383,6 +383,27 @@ class HabitDatabase:
                     """
                 )
                 connection.execute("PRAGMA foreign_keys = ON")
+            if connection.execute(
+                "SELECT 1 FROM web_schema_migrations WHERE version = 11"
+            ).fetchone() is None:
+                connection.executescript(
+                    """
+                    CREATE TABLE web_card_orders (
+                        entity_type TEXT NOT NULL CHECK (entity_type IN ('daily', 'timed', 'log')),
+                        entity_id INTEGER NOT NULL,
+                        position INTEGER NOT NULL CHECK (position >= 0),
+                        PRIMARY KEY (entity_type, entity_id),
+                        UNIQUE (entity_type, position)
+                    );
+                    INSERT INTO web_schema_migrations(version) VALUES (11);
+                    """
+                )
+                for entity_type, table in (("daily", "habits"), ("timed", "timed_activities"), ("log", "activity_logs")):
+                    rows = connection.execute(f"SELECT id FROM {table} ORDER BY start_date, name, id").fetchall()
+                    connection.executemany(
+                        "INSERT INTO web_card_orders(entity_type, entity_id, position) VALUES (?, ?, ?)",
+                        [(entity_type, row[0], position) for position, row in enumerate(rows)],
+                    )
             connection.execute("PRAGMA optimize")
             connection.commit()
 
@@ -439,6 +460,17 @@ class HabitDatabase:
             raise DomainError("Habit names cannot exceed 200 characters.")
         return cleaned
 
+    @staticmethod
+    def _append_card_order(connection: sqlite3.Connection, entity_type: str, entity_id: int) -> None:
+        position = connection.execute(
+            "SELECT COALESCE(MAX(position) + 1, 0) FROM web_card_orders WHERE entity_type = ?",
+            (entity_type,),
+        ).fetchone()[0]
+        connection.execute(
+            "INSERT INTO web_card_orders(entity_type, entity_id, position) VALUES (?, ?, ?)",
+            (entity_type, entity_id, position),
+        )
+
     def create_habit(self, name: str, start_date: str) -> dict:
         cleaned = self._clean_name(name)
         start = self.parse_day(start_date)
@@ -449,6 +481,7 @@ class HabitDatabase:
                 (cleaned, start.isoformat()),
             )
             habit_id = cursor.lastrowid
+            self._append_card_order(connection, "daily", habit_id)
             current = start
             while current < today:
                 connection.execute(
@@ -457,6 +490,30 @@ class HabitDatabase:
                 )
                 current += timedelta(days=1)
         return {"id": habit_id, "name": cleaned, "startDate": start.isoformat()}
+
+    def save_card_order(self, entity_type: str, ids: list[int]) -> list[int]:
+        if entity_type not in {"daily", "timed", "log"}:
+            raise DomainError("Choose a supported card type.")
+        if len(ids) != len(set(ids)) or any(item_id <= 0 for item_id in ids):
+            raise DomainError("Card order must contain unique positive IDs.")
+        table = {"daily": "habits", "timed": "timed_activities", "log": "activity_logs"}[entity_type]
+        with self.connect() as connection, connection:
+            existing = [row[0] for row in connection.execute(
+                f"SELECT entity_id FROM web_card_orders WHERE entity_type = ? ORDER BY position",
+                (entity_type,),
+            )]
+            unknown = set(ids) - {row[0] for row in connection.execute(f"SELECT id FROM {table}")}
+            if unknown:
+                raise DomainError("One or more cards no longer exist.")
+            # IDs not present in the current date remain after the supplied cards.
+            remaining = [item_id for item_id in existing if item_id not in ids]
+            all_ids = [*ids, *remaining]
+            connection.execute("DELETE FROM web_card_orders WHERE entity_type = ?", (entity_type,))
+            connection.executemany(
+                "INSERT INTO web_card_orders(entity_type, entity_id, position) VALUES (?, ?, ?)",
+                [(entity_type, item_id, position) for position, item_id in enumerate(all_ids)],
+            )
+        return ids
 
     def _timed_row(self, connection: sqlite3.Connection, activity_id: int) -> sqlite3.Row:
         row = connection.execute(
@@ -487,6 +544,7 @@ class HabitDatabase:
                 "INSERT INTO timed_activities(name, start_date) VALUES (?, ?)",
                 (cleaned, start.isoformat()),
             )
+            self._append_card_order(connection, "timed", cursor.lastrowid)
         return {"id": cursor.lastrowid, "name": cleaned, "startDate": start.isoformat()}
 
     def timed_activity_summaries(self) -> list[dict]:
@@ -497,7 +555,7 @@ class HabitDatabase:
                    FROM timed_activities a
                    LEFT JOIN timed_activity_notes n ON n.activity_id = a.id
                    GROUP BY a.id, a.name, a.start_date, a.archived_at
-                   ORDER BY a.start_date, a.name, a.id"""
+                   ORDER BY COALESCE((SELECT position FROM web_card_orders o WHERE o.entity_type = 'timed' AND o.entity_id = a.id), 1000000000), a.start_date, a.name, a.id"""
             ).fetchall()
         return [{
             "id": row["id"], "name": row["name"], "startDate": row["start_date"],
@@ -564,6 +622,7 @@ class HabitDatabase:
                 self._timed_row(connection, activity_id)
             safety = self.create_backup("pre-delete")
             with self.connect() as connection, connection:
+                connection.execute("DELETE FROM web_card_orders WHERE entity_type = 'timed' AND entity_id = ?", (activity_id,))
                 cursor = connection.execute("DELETE FROM timed_activities WHERE id = ?", (activity_id,))
                 if cursor.rowcount != 1:
                     raise DomainError("Timed activity not found.")
@@ -606,7 +665,7 @@ class HabitDatabase:
                        AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)
                    )
                    GROUP BY a.id, a.name, a.start_date
-                   ORDER BY a.start_date, a.name, a.id""",
+                   ORDER BY COALESCE((SELECT position FROM web_card_orders o WHERE o.entity_type = 'timed' AND o.entity_id = a.id), 1000000000), a.start_date, a.name, a.id""",
                 (day, monday, day, day, day, day, day),
             ).fetchall()
         return [{
@@ -1279,13 +1338,14 @@ class HabitDatabase:
         cleaned, start = self._clean_name(name), self.parse_day(start_date)
         with self.connect() as connection, connection:
             cursor = connection.execute("INSERT INTO activity_logs(name, start_date) VALUES (?, ?)", (cleaned, start.isoformat()))
+            self._append_card_order(connection, "log", cursor.lastrowid)
         return {"id": cursor.lastrowid, "name": cleaned, "startDate": start.isoformat()}
 
     def activity_log_summaries(self) -> list[dict]:
         with self.connect() as connection:
             rows = connection.execute("""SELECT a.id, a.name, a.start_date, a.archived_at, COUNT(n.activity_id) note_count
                 FROM activity_logs a LEFT JOIN activity_log_notes n ON n.activity_id = a.id
-                GROUP BY a.id, a.name, a.start_date, a.archived_at ORDER BY a.start_date, a.name, a.id""").fetchall()
+                GROUP BY a.id, a.name, a.start_date, a.archived_at ORDER BY COALESCE((SELECT position FROM web_card_orders o WHERE o.entity_type = 'log' AND o.entity_id = a.id), 1000000000), a.start_date, a.name, a.id""").fetchall()
         return [{"id": row["id"], "name": row["name"], "startDate": row["start_date"],
                  "archived": row["archived_at"] is not None, "archivedAt": row["archived_at"], "noteCount": row["note_count"]} for row in rows]
 
@@ -1335,6 +1395,7 @@ class HabitDatabase:
                 self._activity_log_row(connection, activity_id)
             safety = self.create_backup("pre-delete")
             with self.connect() as connection, connection:
+                connection.execute("DELETE FROM web_card_orders WHERE entity_type = 'log' AND entity_id = ?", (activity_id,))
                 connection.execute("DELETE FROM activity_logs WHERE id = ?", (activity_id,))
         return safety.name
 
@@ -1347,7 +1408,7 @@ class HabitDatabase:
                 EXISTS(SELECT 1 FROM activity_log_notes n WHERE n.activity_id = a.id AND n.note_date = ?) has_note
                 FROM activity_logs a WHERE a.start_date <= ? AND NOT EXISTS (
                     SELECT 1 FROM activity_log_archive_periods p WHERE p.activity_id = a.id AND p.archived_at < ?
-                    AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)) ORDER BY a.start_date, a.name, a.id""",
+                    AND (p.resurrected_at IS NULL OR p.resurrected_at > ?)) ORDER BY COALESCE((SELECT position FROM web_card_orders o WHERE o.entity_type = 'log' AND o.entity_id = a.id), 1000000000), a.start_date, a.name, a.id""",
                 (day, day, day, day, day, day)).fetchall()
         return [{"id": row["id"], "name": row["name"], "startDate": row["start_date"], "hasNote": bool(row["has_note"]),
                  "lastCompletedDate": row["last_completed_date"], "completed": bool(row["completed"]), "archived": row["archived_at"] is not None} for row in rows]
@@ -1475,7 +1536,7 @@ class HabitDatabase:
                 LEFT JOIN habit_logs l ON l.habit_id = h.id AND l.log_date = ?
                 LEFT JOIN habit_notes n ON n.habit_id = h.id AND n.note_date = ?
                 WHERE {self._active_sql()}
-                ORDER BY h.start_date, h.name, h.id""",
+                ORDER BY COALESCE((SELECT position FROM web_card_orders o WHERE o.entity_type = 'daily' AND o.entity_id = h.id), 1000000000), h.start_date, h.name, h.id""",
                 (day, day, day, day, day),
             ).fetchall()
             done_by_habit = self._done_logs_for(connection, [row["id"] for row in rows], day)
@@ -1638,6 +1699,7 @@ class HabitDatabase:
                 self._habit_row(connection, habit_id)
             safety = self.create_backup("pre-delete")
             with self.connect() as connection, connection:
+                connection.execute("DELETE FROM web_card_orders WHERE entity_type = 'daily' AND entity_id = ?", (habit_id,))
                 cursor = connection.execute("DELETE FROM habits WHERE id = ?", (habit_id,))
                 if cursor.rowcount != 1:
                     raise DomainError("Habit not found.")

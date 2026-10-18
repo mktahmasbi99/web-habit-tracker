@@ -6,15 +6,19 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Reorder Today cards in each Daily habits, Timed activities, and Activity log section with a long press and drag and drop; save order to the server across dates and devices.
+
+- Move archived cards out of Today’s sections and provide a dedicated Archived cards view.
+
 - Open daily habit details by selecting anywhere on the Today card, while preserving independent status and note controls.
 
 - Limit habit streak histories to three visible entries initially, with a View more control for the remaining streaks.
 
-- Fade archived items in Today and keep archived note histories read-only, without an add, edit, or delete action.
+- Keep archived note histories read-only, without an add, edit, or delete action.
 
-- Remove daily habits, timed activities, and activity-log items from Today’s active lists immediately after archiving; retain same-day history and show them in their section’s archived area.
+- Remove daily habits, timed activities, and activity-log items from Today’s active lists immediately after archiving; retain same-day history and show them in Archived cards.
 
-- Remove the global Notes tab and add per-section archived-item toggles on Today, keeping daily, timed, and activity-log note histories accessible from their item details.
+- Remove the global Notes tab and keep daily, timed, and activity-log note histories accessible from their item details.
 
 - Keep the timed-note editor above the notebook and preserve the logging sheet when navigating back through the nested note history.
 

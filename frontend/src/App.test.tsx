@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -13,6 +13,7 @@ let habitNotes: unknown[];
 let habitName: string;
 let habitStartDate: string;
 let habitStreaks: Array<{ startDate: string; endDate: string; length: number }>;
+let includeSecondDailyHabit: boolean;
 let timedActivities: unknown[];
 let activityLogs: unknown[];
 let archivedHabit = false;
@@ -21,7 +22,7 @@ let archivedActivityLog = false;
 let timerSnapshot: { serverNow: string; timers: Array<Record<string, unknown>> };
 
 describe("Habit Tracker", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
   beforeEach(() => {
     document.documentElement.dataset.theme = "";
     noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "", exists: false, archived: false };
@@ -30,6 +31,7 @@ describe("Habit Tracker", () => {
     habitName = "Read";
     habitStartDate = "2026-08-26";
     habitStreaks = [];
+    includeSecondDailyHabit = false;
     timedActivities = [];
     activityLogs = [];
     archivedHabit = false;
@@ -42,6 +44,7 @@ describe("Habit Tracker", () => {
       const url = String(input);
       if (url === "/api/config") return ok({ today: "2026-08-26", timezone: "Europe/Warsaw", theme: "system" });
       if (url === "/api/settings/theme") return ok({ theme: JSON.parse(String(init?.body)).theme });
+      if (url.startsWith("/api/card-orders/")) return ok({ ids: JSON.parse(String(init?.body)).ids });
       if (url === "/api/unresolved") return ok([{ date: "2026-08-25", pendingCount: 1 }]);
       if (url === "/api/system-notifications") return ok([]);
       if (url === "/api/backups") return ok([]);
@@ -87,6 +90,7 @@ describe("Habit Tracker", () => {
       }
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/activity-logs$/.test(url)) return ok(activityLogs);
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok(timedActivities);
+      if (url.includes("/api/days/") && url.endsWith("/habits")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }, ...(includeSecondDailyHabit ? [{ id: 3, name: "Write", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: false }] : [])]);
       if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/notes") return ok(noteSummaries);
       if (url === "/api/habits/1/notes") return ok(habitNotes);
@@ -102,13 +106,33 @@ describe("Habit Tracker", () => {
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
     const navigation = within(screen.getByRole("navigation", { name: "Main navigation" }));
-    for (const name of ["Today", "Manage", "Notifications", "More"]) {
+    for (const name of ["Today", "Archived cards", "Notifications", "More"]) {
       const button = navigation.getByRole("button", { name: new RegExp(`^${name}(,|$)`) });
       expect(button).toHaveAttribute("title", name);
       expect(button.querySelector("svg")).toBeInTheDocument();
       expect(button).not.toHaveTextContent(name);
     }
     expect(await navigation.findByRole("button", { name: "Notifications, 1 unresolved dates" })).toHaveTextContent("1");
+  });
+
+  it("enters daily habit rearranging mode after a long press", async () => {
+    includeSecondDailyHabit = true;
+    render(<App />);
+    const heading = await screen.findByRole("heading", { name: "Read" });
+    const card = heading.closest("article");
+    expect(card).not.toBeNull();
+    fireEvent.pointerDown(card!, { pointerId: 1 });
+    await act(async () => { await new Promise(resolve => window.setTimeout(resolve, 550)); });
+    fireEvent.pointerUp(card!, { pointerId: 1 });
+    expect(screen.getByText(/Rearranging daily habits/)).toBeInTheDocument();
+    expect(screen.getByText(/Rearranging daily habits/)!.closest(".reorder-toolbar")!.querySelector("button")).toHaveTextContent("Done");
+    expect(screen.queryByRole("button", { name: "Move up" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move down" })).not.toBeInTheDocument();
+    const secondCard = screen.getByRole("heading", { name: "Write" }).closest("article");
+    fireEvent.dragStart(card!, { dataTransfer: { effectAllowed: "" } });
+    fireEvent.dragOver(secondCard!, { clientY: 0 });
+    fireEvent.drop(secondCard!, { clientY: 0 });
+    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/card-orders/daily", expect.objectContaining({ method: "PUT", body: JSON.stringify({ ids: [3, 1] }) })));
   });
 
   it("shows only three streaks initially and expands the rest on request", async () => {
@@ -177,7 +201,7 @@ describe("Habit Tracker", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Mark Change vase water not done" })).toHaveAttribute("aria-pressed", "true"));
   });
 
-  it("removes a daily habit from Today after archiving and keeps it under Show archived", async () => {
+  it("removes an archived daily habit from Today and keeps it in Archived cards", async () => {
     const user = userEvent.setup(); render(<App />);
     await user.click(await screen.findByRole("button", { name: "Open Read" }));
     await user.click(screen.getByRole("button", { name: "More habit options" }));
@@ -186,14 +210,17 @@ describe("Habit Tracker", () => {
     await user.click(screen.getByRole("button", { name: "Archive habit" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Pending" })).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Close habit details" }));
-    await user.click(screen.getByRole("button", { name: "Show archived (2)" }));
-    expect(screen.getByRole("button", { name: /Read.*Archived · view history and notes/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show archived/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archived cards" }));
+    expect(await screen.findByRole("heading", { name: "Archived cards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Read.*Archived/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Today" }));
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pending" })).toBeInTheDocument();
   });
 
-  it("removes a timed activity from Today after archiving and keeps it under Show archived", async () => {
+  it("keeps archived timed activities in Archived cards", async () => {
     timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 30, weekMinutes: 30, hasNote: false, archived: false }];
     const user = userEvent.setup(); render(<App />);
     await user.click(await screen.findByRole("button", { name: "Open Study" }));
@@ -202,14 +229,17 @@ describe("Habit Tracker", () => {
     expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive activity" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Open Study" })).not.toBeInTheDocument());
-    await user.click(within(document.querySelector(".today-page > .timed-section:not(.daily-section):not(.activity-log-section)")!).getByRole("button", { name: "Show archived (1)" }));
-    expect(screen.getByRole("button", { name: /Study.*Archived · 0 notes/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show archived/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archived cards" }));
+    expect(await screen.findByRole("heading", { name: "Archived cards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Study.*0 notes.*Archived/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Today" }));
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Study" })).toBeInTheDocument();
   });
 
-  it("removes an activity log from Today after archiving and keeps it under Show archived", async () => {
+  it("keeps archived activity logs in Archived cards", async () => {
     activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: "2026-08-22", completed: false, hasNote: false, archived: false }];
     const user = userEvent.setup(); render(<App />);
     await user.click(await screen.findByRole("button", { name: "Open Change vase water" }));
@@ -218,8 +248,11 @@ describe("Habit Tracker", () => {
     expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive activity" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Open Change vase water" })).not.toBeInTheDocument());
-    await user.click(within(document.querySelector(".activity-log-section")!).getByRole("button", { name: "Show archived (1)" }));
-    expect(screen.getByRole("button", { name: /Change vase water.*Archived · 0 notes/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show archived/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archived cards" }));
+    expect(await screen.findByRole("heading", { name: "Archived cards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Change vase water.*0 notes.*Archived/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Today" }));
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open Change vase water" })).toBeInTheDocument();
@@ -603,20 +636,17 @@ describe("Habit Tracker", () => {
     expect(screen.getByText(/shared by every device/)).toBeInTheDocument();
   });
 
-  it("preserves the archived disclosure while a habit detail opens and closes", async () => {
+  it("shows archived cards in their dedicated section", async () => {
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
-    await user.click(screen.getByRole("button", { name: "Manage" }));
-    const active = await screen.findByRole("button", { name: "Active" });
-    const archived = screen.getByRole("button", { name: "Archived" });
-    expect(active).toHaveAttribute("aria-expanded", "true");
-    expect(archived).toHaveAttribute("aria-expanded", "false");
-    await user.click(archived);
+    await user.click(screen.getByRole("button", { name: "Archived cards" }));
+    expect(await screen.findByRole("heading", { name: "Archived cards" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Active" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Archived" })).not.toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /Run/ }));
     expect(await screen.findByRole("heading", { name: "Run" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close habit details" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Close habit details" })).not.toBeInTheDocument());
-    expect(archived).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: /Run/ })).toBeInTheDocument();
   });
 });

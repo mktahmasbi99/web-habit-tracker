@@ -53,6 +53,22 @@ def test_api_workflow(monkeypatch, tmp_path):
     assert all(day["active"] is False and day["status"] is None for day in future_days)
 
 
+def test_api_saves_card_order_and_rejects_duplicate_ids(monkeypatch, tmp_path):
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "card-order.sqlite3"))
+    import app.main
+    module = importlib.reload(app.main)
+    client = TestClient(module.app)
+    today = client.get("/api/config").json()["today"]
+    first = client.post("/api/habits", json={"name": "First", "startDate": today}).json()["id"]
+    second = client.post("/api/habits", json={"name": "Second", "startDate": today}).json()["id"]
+    response = client.put("/api/card-orders/daily", json={"ids": [second, first]})
+    assert response.status_code == 200
+    assert response.json() == {"ids": [second, first]}
+    assert [item["id"] for item in client.get(f"/api/days/{today}/habits").json()] == [second, first]
+    assert client.put("/api/card-orders/daily", json={"ids": [first, first]}).status_code == 400
+
+
 def test_api_returns_consistent_domain_error(monkeypatch, tmp_path):
     monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "errors.sqlite3"))
     import app.main

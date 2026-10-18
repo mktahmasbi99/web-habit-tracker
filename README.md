@@ -9,6 +9,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 ## Implemented in v1
 
 - Today and historical date navigation with a Monday-first calendar and a Jump to today action
+- Reorder Today cards independently in the Daily habits, Timed activities, and Activity log sections with a long press followed by drag and drop; server-saved order is shared across dates and devices
 - Daily habit creation from any selected date
 - A compact activity-type dropdown for creating daily habits, timed activities, and activity-log items
 - Pending, Done, and Missed status controls
@@ -20,7 +21,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Open a daily habit from anywhere on its Today card, while keeping status and note controls independently clickable
 - Per-item, per-day notes for daily habits, timed activities, and activity-log items, with full-screen read, edit, and delete controls, direct note URLs, and dated history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
-- Dedicated Management navigation divided into active and archived Daily habits, Timed activities, and Activity log items
+- Dedicated Archived cards navigation for archived Daily habits, Timed activities, and Activity log items
 - Icon-only main navigation with accessible button names, hover tooltips, and an unresolved-date count badge
 - Unresolved past-date notifications inside the app
 - Validated import of compatible terminal/iPhone SQLite databases
@@ -28,7 +29,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Responsive phone and desktop layouts with a shared skin selection; System follows each device's light or dark mode
 - Docker image and NAS Compose deployment
 
-Daily habit, Timed activity, and Activity log details include a Notes button opening that item’s complete dated note history. Use + in a notebook to open today’s note directly, using the server’s date. If today already has a note, it opens for editing. New notes require an active date; existing notes remain editable. Today has per-section Show archived toggles so archived items and their notes remain reachable after removing the global Notes tab. Archiving an item removes it from its active Today list immediately, while preserving that day’s history and showing the item in the archived area. Archived Today cards are faded, and notes for archived items are view-only. Habit streak history initially shows three streaks; select View more to show the remaining history.
+Daily habit, Timed activity, and Activity log details include a Notes button opening that item’s complete dated note history. Use + in a notebook to open today’s note directly, using the server’s date. If today already has a note, it opens for editing. New notes require an active date; existing notes remain editable. Archived items remain reachable from the Archived cards view after removing the global Notes tab. Archiving an item removes it from its active Today list immediately, while preserving that day’s history and showing the item in Archived cards. Notes for archived items are view-only. Habit streak history initially shows three streaks; select View more to show the remaining history.
 
 ## Status rules
 
@@ -84,7 +85,7 @@ The More tab creates downloadable on-demand SQLite backups and manages server-si
 
 The backup list tags Daily, Weekly, and On-demand backups. Pre-import, Pre-restore, and Pre-delete safety snapshots are hidden by default behind **Show safety backups** and share a retention limit of eight. Every backup can be downloaded, restored, or deleted. Restore requires typing `RESTORE`, validates and migrates a staged copy, preserves the current schedule settings, creates a safety snapshot, and then atomically replaces live data. Permanently deleting a habit also requires typing `DELETE` and creates a safety snapshot immediately before removal; deletion stops if that snapshot cannot be created.
 
-Habit Management lives on the Manage tab. Active habits are expanded by default and archived habits are collapsed by default. Habits can also be opened directly from the main daily view. Opening a habit provides rename, archive or restore, and protected deletion actions. Archive preserves logs and notes, treats the archive date as the final active day, and records each active period. Restore uses a normal confirmation, begins on the server-authoritative current date, and does not backfill the inactive gap. Returning from habit details preserves the disclosure state and list position until a full reload.
+Archived cards live on the Archived cards tab, grouped by Daily habits, Timed activities, and Activity log. Active items are managed from Today and their detail views. Opening an item provides rename, archive or restore, and protected deletion actions. Archive preserves logs and notes, treats the archive date as the final active day, and records each active period. Restore uses a normal confirmation, begins on the server-authoritative current date, and does not backfill the inactive gap.
 
 The collapsed **More** section below the server backup list accepts uploaded backups produced by this web application. Web backups contain an explicit application and format marker. At the bottom of Advanced, the collapsed **Import legacy database** section accepts a compatible legacy SQLite database. Legacy import validates database integrity and schema, requires typing `IMPORT`, migrates a staged copy, creates a safety backup, and atomically swaps the staged database into place. Uploaded source files are never changed.
 

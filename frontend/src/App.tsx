@@ -1,8 +1,8 @@
 import {
-  Bell, BellOff, ChevronLeft, ChevronRight,
-  CircleCheck, CircleEllipsis, Clock3, Download, FileUp, Flame, MoreHorizontal, NotebookPen, Pencil, Plus, Save, Settings2, StickyNote, Trash2, X,
+  Archive, Bell, BellOff, ChevronLeft, ChevronRight,
+  CircleCheck, CircleEllipsis, Clock3, Download, FileUp, Flame, MoreHorizontal, NotebookPen, Pencil, Plus, Save, StickyNote, Trash2, X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { allowHistoryNavigation, closeHistoryRoute, registerLeaveGuard } from "./lib/navigation";
 import { lockScroll } from "./hooks/scrollLock";
@@ -102,9 +102,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const [habits, setHabits] = useState<HabitDay[]>([]);
   const [timed, setTimed] = useState<TimedActivityDay[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLogDay[]>([]);
-  const [archivedHabits, setArchivedHabits] = useState<HabitSummary[]>([]);
-  const [archivedTimed, setArchivedTimed] = useState<TimedActivitySummary[]>([]);
-  const [archivedLogs, setArchivedLogs] = useState<ActivityLogSummary[]>([]);
+  const [archivedHabitIds, setArchivedHabitIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadedDate, setLoadedDate] = useState("");
   const [loadError, setLoadError] = useState(false);
@@ -117,12 +115,93 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const [dailyOpen, setDailyOpen] = useState(() => { try { return window.localStorage?.getItem?.("daily-habits-open") !== "false"; } catch { return true; } });
   const [timedOpen, setTimedOpen] = useState(timedSectionPreference);
   const [activityLogsOpen, setActivityLogsOpen] = useState(() => { try { return window.localStorage?.getItem?.("activity-logs-open") !== "false"; } catch { return true; } });
-  const [showArchivedDaily, setShowArchivedDaily] = useState(false);
-  const [showArchivedTimed, setShowArchivedTimed] = useState(false);
-  const [showArchivedLogs, setShowArchivedLogs] = useState(false);
   const [timedDetail, setTimedDetail] = useState<(TimedActivityDay & { date: string }) | null>(null);
   const [activityLogDetail, setActivityLogDetail] = useState<ActivityLogDay | null>(null);
   const [activityLogWrites, setActivityLogWrites] = useState(new Set<number>());
+  const [reorderMode, setReorderMode] = useState<"daily" | "timed" | "log" | null>(null);
+  const holdTimer = useRef<number | null>(null);
+  const suppressTimer = useRef<number | null>(null);
+  const suppressCardClick = useRef(false);
+  const suppressedTarget = useRef<EventTarget | null>(null);
+  const draggedId = useRef<number | null>(null);
+  const pointerDragging = useRef(false);
+  const pointerMoved = useRef(false);
+  const dragOriginal = useRef<{ type: "daily" | "timed" | "log"; ids: number[] } | null>(null);
+  const orderedIds = (type: "daily" | "timed" | "log") => (type === "daily" ? visibleHabits : type === "timed" ? visibleTimed : visibleActivityLogs).map(item => item.id);
+  const listForOrder = (type: "daily" | "timed" | "log", ids: number[]) => {
+    const rank = new Map(ids.map((id, index) => [id, index]));
+    const sort = <T extends { id: number }>(items: T[]) => [...items].sort((a, b) => (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length));
+    if (type === "daily") setHabits(sort);
+    else if (type === "timed") setTimed(sort);
+    else setActivityLogs(sort);
+  };
+  const persistOrder = async (type: "daily" | "timed" | "log", ids: number[], oldIds: number[]) => {
+    try { await api.saveCardOrder(type, ids); }
+    catch (error) { listForOrder(type, oldIds); reportError(error); }
+  };
+  const moveRelative = (type: "daily" | "timed" | "log", movingId: number, targetId: number, before: boolean) => {
+    const ids = orderedIds(type), from = ids.indexOf(movingId);
+    if (from < 0 || movingId === targetId) return false;
+    ids.splice(from, 1);
+    const targetIndex = ids.indexOf(targetId);
+    if (targetIndex < 0) return false;
+    ids.splice(targetIndex + (before ? 0 : 1), 0, movingId);
+    if (ids.some((id, index) => id !== orderedIds(type)[index])) listForOrder(type, ids);
+    return true;
+  };
+  const holdProps = (type: "daily" | "timed" | "log") => ({
+    onPointerDown: (event: PointerEvent<HTMLElement>) => {
+      if (reorderMode === type) {
+        if (event.target instanceof Element && event.target.closest(".habit-actions, .note-button, .activity-log-card-actions")) return;
+        pointerDragging.current = true; pointerMoved.current = false; draggedId.current = Number(event.currentTarget.dataset.cardId); dragOriginal.current = { type, ids: orderedIds(type) }; suppressedTarget.current = event.target; return;
+      }
+      if (reorderMode || event.target instanceof Element && event.target.closest(".habit-actions, .note-button, .activity-log-card-actions")) return;
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current);
+      suppressedTarget.current = event.target;
+      holdTimer.current = window.setTimeout(() => { setReorderMode(type); suppressCardClick.current = true; suppressTimer.current = window.setTimeout(() => { suppressCardClick.current = false; suppressedTarget.current = null; }, 1200); }, 500);
+    },
+    onPointerMove: (event: PointerEvent<HTMLElement>) => {
+      if (!pointerDragging.current || reorderMode !== type || draggedId.current === null) return;
+      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>(`[data-card-type="${type}"]`);
+      const targetId = Number(target?.dataset.cardId);
+      if (!target || !Number.isFinite(targetId) || targetId === draggedId.current) return;
+      const rect = target.getBoundingClientRect();
+      pointerMoved.current = moveRelative(type, draggedId.current, targetId, event.clientY < rect.top + rect.height / 2) || pointerMoved.current;
+    },
+    onPointerUp: () => {
+      if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null;
+      if (pointerDragging.current && dragOriginal.current && pointerMoved.current) {
+        void persistOrder(type, orderedIds(type), dragOriginal.current.ids);
+        suppressCardClick.current = true;
+        suppressTimer.current = window.setTimeout(() => { suppressCardClick.current = false; suppressedTarget.current = null; }, 1200);
+      }
+      pointerDragging.current = false; pointerMoved.current = false; draggedId.current = null; dragOriginal.current = null;
+    },
+    onPointerLeave: () => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null; },
+    onClickCapture: (event: MouseEvent<HTMLElement>) => { if (suppressCardClick.current && event.target === suppressedTarget.current) { suppressCardClick.current = false; suppressedTarget.current = null; if (suppressTimer.current !== null) window.clearTimeout(suppressTimer.current); event.preventDefault(); event.stopPropagation(); } },
+  });
+  const dragProps = (type: "daily" | "timed" | "log", id: number) => ({
+    "data-card-type": type,
+    "data-card-id": id,
+    draggable: reorderMode === type,
+    onDragStart: (event: DragEvent<HTMLElement>) => { draggedId.current = id; dragOriginal.current = { type, ids: orderedIds(type) }; event.dataTransfer.effectAllowed = "move"; },
+    onDragOver: (event: DragEvent<HTMLElement>) => {
+      if (reorderMode !== type || draggedId.current === null || draggedId.current === id) return;
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      moveRelative(type, draggedId.current, id, event.clientY < rect.top + rect.height / 2);
+    },
+    onDrop: (event: DragEvent<HTMLElement>) => {
+      event.preventDefault();
+      const previous = dragOriginal.current;
+      if (previous) void persistOrder(type, orderedIds(type), previous.ids);
+      draggedId.current = null; dragOriginal.current = null;
+    },
+    onDragEnd: () => {
+      if (dragOriginal.current?.type === type) listForOrder(type, dragOriginal.current.ids);
+      draggedId.current = null; dragOriginal.current = null;
+    },
+  });
   const load = useCallback(async () => {
     const preserveContent = loadedDateRef.current === selectedDate;
     read.current?.abort();
@@ -130,18 +209,18 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     if (!preserveContent) setLoading(true);
     setLoadError(false);
     try {
-      const [daily, activities, logs, allDaily, allTimed, allLogs] = await Promise.all([api.habits(selectedDate, controller.signal), api.timedActivities(selectedDate, controller.signal), api.activityLogs(selectedDate, controller.signal), api.habitSummaries(), api.timedActivitySummaries(), api.activityLogSummaries()]);
-      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); setArchivedHabits(allDaily.filter(item => item.archived)); setArchivedTimed(allTimed.filter(item => item.archived)); setArchivedLogs(allLogs.filter(item => item.archived)); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); }
+      const [daily, activities, logs, allDaily] = await Promise.all([api.habits(selectedDate, controller.signal), api.timedActivities(selectedDate, controller.signal), api.activityLogs(selectedDate, controller.signal), api.habitSummaries()]);
+      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); setArchivedHabitIds(new Set(allDaily.filter(item => item.archived).map(item => item.id))); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); }
     } catch (error) { if (!controller.signal.aborted) { setLoadError(true); reportError(error); } }
     finally { if (!controller.signal.aborted) setLoading(false); }
   }, [selectedDate, reportError]);
   const timerTracking = useTimedActivityTimers(selectedDate === config.today, () => { void load(); onDataChange(); }, reportError);
   const timers = new Map(timerTracking.snapshot.timers.map(timer => [timer.activityId, liveTimer(timer, timerTracking.snapshot.serverNow, timerTracking.clock)]));
   useEffect(() => { void load(); return () => read.current?.abort(); }, [load, refresh]);
+  useEffect(() => { setReorderMode(null); if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null; }, [selectedDate]);
   useEffect(() => { const refreshNotes = () => { void load(); }; window.addEventListener("note-changed", refreshNotes); return () => window.removeEventListener("note-changed", refreshNotes); }, [load]);
   const isRelativeDay = selectedDate === config.today || selectedDate === shiftDay(config.today, -1) || selectedDate === shiftDay(config.today, 1);
   const title = selectedDate === config.today ? "Today" : selectedDate === shiftDay(config.today, -1) ? "Yesterday" : selectedDate === shiftDay(config.today, 1) ? "Tomorrow" : prettyDate(selectedDate);
-  const archivedHabitIds = new Set(archivedHabits.map(habit => habit.id));
   const visibleHabits = selectedDate === config.today ? habits.filter(habit => !archivedHabitIds.has(habit.id)) : habits;
   const visibleTimed = selectedDate === config.today ? timed.filter(activity => !activity.archived) : timed;
   const visibleActivityLogs = selectedDate === config.today ? activityLogs.filter(activity => !activity.archived) : activityLogs;
@@ -169,8 +248,9 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     <div className="primary-action"><button className="add-button" onClick={() => setAdding(true)} aria-label="Add habit"><Plus /></button></div>
     {loadError ? <div className="loading" role="status">Could not load this day.<button className="small-button" onClick={() => void load()}>Retry</button></div> : loading || loadedDate !== selectedDate ? <div className="loading" role="status">Loading habits…</div> : <>
     <section className="timed-section daily-section">
-      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={dailyOpen} aria-controls="daily-habit-list" onClick={() => { const next = !dailyOpen; setDailyOpen(next); try { window.localStorage?.setItem?.("daily-habits-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Daily habits</strong><small>Complete once each day</small></span></button>{archivedHabits.length > 0 && <button className="archived-toggle" type="button" aria-pressed={showArchivedDaily} onClick={() => setShowArchivedDaily(value => !value)}>{showArchivedDaily ? "Hide archived" : `Show archived (${archivedHabits.length})`}</button>}</div>
-      {dailyOpen && <div id="daily-habit-list">{visibleHabits.length === 0 && (!showArchivedDaily || archivedHabits.length === 0) ? <p className="timed-empty">No daily habits on this date.</p> : <div className="habit-list timed-list">{visibleHabits.map(habit => <article className="habit-card" key={habit.id} aria-busy={pendingWrites.has(`${selectedDate}:${habit.id}`)}>
+      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={dailyOpen} aria-controls="daily-habit-list" onClick={() => { const next = !dailyOpen; setDailyOpen(next); try { window.localStorage?.setItem?.("daily-habits-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Daily habits</strong><small>Complete once each day</small></span></button></div>
+      {reorderMode === "daily" && <div className="reorder-toolbar" role="status"><span>Rearranging daily habits · drag cards to reorder</span><button type="button" onClick={() => setReorderMode(null)}>Done</button></div>}
+      {dailyOpen && <div id="daily-habit-list">{visibleHabits.length === 0 ? <p className="timed-empty">No daily habits on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "daily" ? "reorder-list" : ""}`}>{visibleHabits.map((habit, index) => <article className={`habit-card ${reorderMode === "daily" ? "reorder-card" : ""}`} key={habit.id} aria-busy={pendingWrites.has(`${selectedDate}:${habit.id}`)} {...holdProps("daily")} {...dragProps("daily", habit.id)}>
         <button className="habit-card-open habit-card-head" onClick={() => openHabit?.(habit.id)} aria-label={`Open ${habit.name}`}><h2>{habit.name}</h2><span><Flame size={14} /> {habit.currentStreak} streak</span></button>
         {pendingWrites.has(`${selectedDate}:${habit.id}`) && <small role="status">Saving…</small>}
         <div className="habit-actions">
@@ -179,15 +259,17 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
           )}</div>
           <button className={`note-button ${habit.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: habit.id, habitName: habit.name, date: selectedDate, create: !habit.hasNote })} aria-label={`${habit.hasNote ? "View" : "Add"} note for ${habit.name}`}><StickyNote /></button>
         </div>
-      </article>)}{showArchivedDaily && archivedHabits.map(habit => <button className="habit-card archived-today-card" key={`archived-${habit.id}`} onClick={() => openHabit(habit.id)}><span><strong>{habit.name}</strong><small>Archived · view history and notes</small></span><ChevronRight /></button>)}</div>}</div>}
+      </article>)}</div>}</div>}
     </section></>}
     {!loading && !loadError && loadedDate === selectedDate && <section className="timed-section">
-      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={timedOpen} aria-controls="timed-activity-list" onClick={() => { const next = !timedOpen; setTimedOpen(next); saveTimedSectionPreference(next); }}><ChevronRight aria-hidden="true" /><span><strong>Timed activities</strong><small>Optional time tracking</small></span></button>{archivedTimed.length > 0 && <button className="archived-toggle" type="button" aria-pressed={showArchivedTimed} onClick={() => setShowArchivedTimed(value => !value)}>{showArchivedTimed ? "Hide archived" : `Show archived (${archivedTimed.length})`}</button>}</div>
-      {timedOpen && <div id="timed-activity-list">{visibleTimed.length === 0 && (!showArchivedTimed || archivedTimed.length === 0) ? <p className="timed-empty">No timed activities on this date.</p> : <div className="habit-list timed-list">{visibleTimed.map(activity => { const timer = timers.get(activity.id); return <article className="habit-card timed-card" key={activity.id}><button className="timed-card-open" onClick={() => setTimedDetail({ ...activity, date: selectedDate })} aria-label={`Open ${activity.name}`}><span><strong>{activity.name}</strong><small className="timed-day-total"><Clock3 aria-hidden="true" />{formatMinutes(activity.dayMinutes)}</small>{timer?.mode === "pomodoro" && <span className="pomodoro-card-indicator" aria-label="Pomodoro timer active"><span aria-hidden="true">🍅</span></span>}{timer?.mode === "stopwatch" && <span className="stopwatch-card-indicator" aria-label={`Stopwatch ${timer.status}, ${formatTimerClock(timer.elapsedSeconds)} elapsed`}>⏱️ {formatTimerClock(timer.elapsedSeconds)}</span>}{timer?.mode === "countdown" && <span className="countdown-card-indicator" aria-label={`${Math.round(timer.percent)} percent complete, ${formatTimerClock(timer.elapsedSeconds)} elapsed, ${formatTimerClock(timer.remainingSeconds)} remaining`}><span><span>{formatTimerClock(timer.elapsedSeconds)} elapsed</span><span>{formatTimerClock(timer.remainingSeconds)} left</span></span><progress max="100" value={timer.percent}>{timer.percent}%</progress></span>}</span><ChevronRight aria-hidden="true" /></button><button className={`note-button ${activity.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: activity.id, habitName: activity.name, date: selectedDate, create: !activity.hasNote, kind: "timed" })} aria-label={`${activity.hasNote ? "View" : "Add"} note for ${activity.name}`}><StickyNote /></button></article>; })}{showArchivedTimed && archivedTimed.map(activity => <button className="habit-card archived-today-card" key={`archived-${activity.id}`} onClick={() => openTimed(activity.id)}><span><strong>{activity.name}</strong><small>Archived · {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</small></span><ChevronRight /></button>)}</div>}</div>}
+      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={timedOpen} aria-controls="timed-activity-list" onClick={() => { const next = !timedOpen; setTimedOpen(next); saveTimedSectionPreference(next); }}><ChevronRight aria-hidden="true" /><span><strong>Timed activities</strong><small>Optional time tracking</small></span></button></div>
+      {reorderMode === "timed" && <div className="reorder-toolbar" role="status"><span>Rearranging timed activities · drag cards to reorder</span><button type="button" onClick={() => setReorderMode(null)}>Done</button></div>}
+      {timedOpen && <div id="timed-activity-list">{visibleTimed.length === 0 ? <p className="timed-empty">No timed activities on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "timed" ? "reorder-list" : ""}`}>{visibleTimed.map((activity, index) => { const timer = timers.get(activity.id); return <article className={`habit-card timed-card ${reorderMode === "timed" ? "reorder-card" : ""}`} key={activity.id} {...holdProps("timed")} {...dragProps("timed", activity.id)}><button className="timed-card-open" onClick={() => setTimedDetail({ ...activity, date: selectedDate })} aria-label={`Open ${activity.name}`}><span><strong>{activity.name}</strong><small className="timed-day-total"><Clock3 aria-hidden="true" />{formatMinutes(activity.dayMinutes)}</small>{timer?.mode === "pomodoro" && <span className="pomodoro-card-indicator" aria-label="Pomodoro timer active"><span aria-hidden="true">🍅</span></span>}{timer?.mode === "stopwatch" && <span className="stopwatch-card-indicator" aria-label={`Stopwatch ${timer.status}, ${formatTimerClock(timer.elapsedSeconds)} elapsed`}>⏱️ {formatTimerClock(timer.elapsedSeconds)}</span>}{timer?.mode === "countdown" && <span className="countdown-card-indicator" aria-label={`${Math.round(timer.percent)} percent complete, ${formatTimerClock(timer.elapsedSeconds)} elapsed, ${formatTimerClock(timer.remainingSeconds)} remaining`}><span><span>{formatTimerClock(timer.elapsedSeconds)} elapsed</span><span>{formatTimerClock(timer.remainingSeconds)} left</span></span><progress max="100" value={timer.percent}>{timer.percent}%</progress></span>}</span><ChevronRight aria-hidden="true" /></button><button className={`note-button ${activity.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: activity.id, habitName: activity.name, date: selectedDate, create: !activity.hasNote, kind: "timed" })} aria-label={`${activity.hasNote ? "View" : "Add"} note for ${activity.name}`}><StickyNote /></button></article>; })}</div>}</div>}
     </section>}
     {!loading && !loadError && loadedDate === selectedDate && <section className="timed-section activity-log-section">
-      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={activityLogsOpen} aria-controls="activity-log-list" onClick={() => { const next = !activityLogsOpen; setActivityLogsOpen(next); try { window.localStorage?.setItem?.("activity-logs-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Activity log</strong><small>Record activities without schedules</small></span></button>{archivedLogs.length > 0 && <button className="archived-toggle" type="button" aria-pressed={showArchivedLogs} onClick={() => setShowArchivedLogs(value => !value)}>{showArchivedLogs ? "Hide archived" : `Show archived (${archivedLogs.length})`}</button>}</div>
-      {activityLogsOpen && <div id="activity-log-list">{visibleActivityLogs.length === 0 && (!showArchivedLogs || archivedLogs.length === 0) ? <p className="timed-empty">No activity log items on this date.</p> : <div className="habit-list timed-list">{visibleActivityLogs.map(activity => <article className="habit-card timed-card activity-log-card" key={activity.id} aria-busy={activityLogWrites.has(activity.id)}><button className="timed-card-open" onClick={() => setActivityLogDetail(activity)} aria-label={`Open ${activity.name}`}><span><strong>{activity.name}</strong><small>{relativeCompletion(activity.lastCompletedDate, config.today)}</small></span><ChevronRight aria-hidden="true" /></button><div className="activity-log-card-actions"><button className={`status-button done ${activity.completed ? "active" : ""}`} disabled={activityLogWrites.has(activity.id)} onClick={() => void toggleActivityLogCompletion(activity)} aria-pressed={activity.completed} aria-label={`${activity.completed ? "Mark" : "Mark"} ${activity.name} ${activity.completed ? "not done" : "done"}`}>Done</button><button className={`note-button ${activity.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: activity.id, habitName: activity.name, date: selectedDate, create: !activity.hasNote, kind: "log" })} aria-label={`${activity.hasNote ? "View" : "Add"} note for ${activity.name}`}><StickyNote /></button></div></article>)}{showArchivedLogs && archivedLogs.map(activity => <button className="habit-card archived-today-card" key={`archived-${activity.id}`} onClick={() => setActivityLogDetail({ id: activity.id, name: activity.name, startDate: activity.startDate, lastCompletedDate: activity.archivedAt, completed: false, hasNote: activity.noteCount > 0, archived: true })}><span><strong>{activity.name}</strong><small>Archived · {activity.noteCount} {activity.noteCount === 1 ? "note" : "notes"}</small></span><ChevronRight /></button>)}</div>}</div>}
+      <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={activityLogsOpen} aria-controls="activity-log-list" onClick={() => { const next = !activityLogsOpen; setActivityLogsOpen(next); try { window.localStorage?.setItem?.("activity-logs-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Activity log</strong><small>Record activities without schedules</small></span></button></div>
+      {reorderMode === "log" && <div className="reorder-toolbar" role="status"><span>Rearranging activity log · drag cards to reorder</span><button type="button" onClick={() => setReorderMode(null)}>Done</button></div>}
+      {activityLogsOpen && <div id="activity-log-list">{visibleActivityLogs.length === 0 ? <p className="timed-empty">No activity log items on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "log" ? "reorder-list" : ""}`}>{visibleActivityLogs.map((activity, index) => <article className={`habit-card timed-card activity-log-card ${reorderMode === "log" ? "reorder-card" : ""}`} key={activity.id} aria-busy={activityLogWrites.has(activity.id)} {...holdProps("log")} {...dragProps("log", activity.id)}><button className="timed-card-open" onClick={() => setActivityLogDetail(activity)} aria-label={`Open ${activity.name}`}><span><strong>{activity.name}</strong><small>{relativeCompletion(activity.lastCompletedDate, config.today)}</small></span><ChevronRight aria-hidden="true" /></button><div className="activity-log-card-actions"><button className={`status-button done ${activity.completed ? "active" : ""}`} disabled={activityLogWrites.has(activity.id)} onClick={() => void toggleActivityLogCompletion(activity)} aria-pressed={activity.completed} aria-label={`${activity.completed ? "Mark" : "Mark"} ${activity.name} ${activity.completed ? "not done" : "done"}`}>Done</button><button className={`note-button ${activity.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: activity.id, habitName: activity.name, date: selectedDate, create: !activity.hasNote, kind: "log" })} aria-label={`${activity.hasNote ? "View" : "Add"} note for ${activity.name}`}><StickyNote /></button></div></article>)}</div>}</div>}
     </section>}
     {calendar && <Modal title="Calendar" wide onClose={() => setCalendar(false)}><Calendar selected={selectedDate} today={config.today} onSelect={date => { onDate(date); setCalendar(false); }} onJumpToToday={() => { onDate(config.today); setCalendar(false); }} /></Modal>}
     {adding && <AddHabit defaultDate={selectedDate} onClose={() => setAdding(false)} onSave={async (name, startDate, kind) => {
@@ -320,23 +402,17 @@ function NoteDetailView({ target, onClose: exitNote, onChanged, reportError }: {
 }
 
 function ManagementPage({ refresh, openHabit, openTimed, reportError }: { refresh: number; openHabit: (id: number) => void; openTimed: (id: number) => void; reportError: (error: unknown) => void }) {
-  const [items, setItems] = useState<HabitSummary[]>([]); const [timed, setTimed] = useState<TimedActivitySummary[]>([]); const [logs, setLogs] = useState<ActivityLogSummary[]>([]); const [selectedLog, setSelectedLog] = useState<ActivityLogSummary | null>(null); const [activeOpen, setActiveOpen] = useState(() => { try { return window.localStorage?.getItem?.("management-active-open") !== "false"; } catch { return true; } }); const [archivedOpen, setArchivedOpen] = useState(() => { try { return window.localStorage?.getItem?.("management-archived-open") === "true"; } catch { return false; } });
-  const [groups, setGroups] = useState<Record<string, boolean>>(() => { const keys = ["active-daily", "active-timed", "active-logs", "archived-daily", "archived-timed", "archived-logs"]; return Object.fromEntries(keys.map(key => { try { return [key, window.localStorage?.getItem?.(`management-${key}-open`) !== "false"]; } catch { return [key, true]; } })); });
+  const [items, setItems] = useState<HabitSummary[]>([]); const [timed, setTimed] = useState<TimedActivitySummary[]>([]); const [logs, setLogs] = useState<ActivityLogSummary[]>([]); const [selectedLog, setSelectedLog] = useState<ActivityLogSummary | null>(null);
   useEffect(() => { void Promise.all([api.habitSummaries(), api.timedActivitySummaries(), api.activityLogSummaries()]).then(([daily, timedItems, logItems]) => { setItems(daily); setTimed(timedItems); setLogs(logItems); }).catch(reportError); }, [refresh, reportError]);
-  const active = items.filter(item => !item.archived);
   const archived = items.filter(item => item.archived).sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
-  const activeTimed = timed.filter(item => !item.archived); const archivedTimed = timed.filter(item => item.archived).sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
-  const activeLogs = logs.filter(item => !item.archived); const archivedLogs = logs.filter(item => item.archived).sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
+  const archivedTimed = timed.filter(item => item.archived).sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
+  const archivedLogs = logs.filter(item => item.archived).sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
   const dailyRows = (values: HabitSummary[], archivedStyle = false) => values.length === 0 ? <p className="management-empty">None</p> : <div className="management-list">{values.map(item => <button className={`list-row ${archivedStyle ? "archived-habit-row" : ""}`} key={item.id} onClick={() => openHabit(item.id)}><span><strong>{item.name}</strong><small>Started {prettyDate(item.startDate)}</small></span>{archivedStyle && <i className="archive-badge">Archived</i>}<ChevronRight /></button>)}</div>;
   const timedRows = (values: TimedActivitySummary[], archivedStyle = false) => values.length === 0 ? <p className="management-empty">None</p> : <div className="management-list">{values.map(item => <button className={`list-row ${archivedStyle ? "archived-habit-row" : ""}`} key={item.id} onClick={() => openTimed(item.id)}><span><strong>{item.name}</strong><small>Started {prettyDate(item.startDate)} · {item.noteCount} {item.noteCount === 1 ? "note" : "notes"}</small></span>{archivedStyle && <i className="archive-badge">Archived</i>}<ChevronRight /></button>)}</div>;
   const logRows = (values: ActivityLogSummary[], archivedStyle = false) => values.length === 0 ? <p className="management-empty">None</p> : <div className="management-list">{values.map(item => <button className={`list-row ${archivedStyle ? "archived-habit-row" : ""}`} key={item.id} onClick={() => setSelectedLog(item)}><span><strong>{item.name}</strong><small>Started {prettyDate(item.startDate)} · {item.noteCount} {item.noteCount === 1 ? "note" : "notes"}</small></span>{archivedStyle && <i className="archive-badge">Archived</i>}<ChevronRight /></button>)}</div>;
-  const setDisclosure = (kind: "active" | "archived", value: boolean) => { if (kind === "active") setActiveOpen(value); else setArchivedOpen(value); try { window.localStorage?.setItem?.(`management-${kind}-open`, String(value)); } catch { /* optional preference */ } };
-  const subgroup = (key: string, label: string, content: React.ReactNode) => <div className="management-subgroup"><button className="disclosure-row nested-management" type="button" aria-expanded={groups[key]} onClick={() => { const value = !groups[key]; setGroups(current => ({ ...current, [key]: value })); try { window.localStorage?.setItem?.(`management-${key}-open`, String(value)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" />{label}</button>{groups[key] && content}</div>;
-  return <section className="page list-page"><h1>Management</h1><div className="settings-group management-group">
-    <button className="disclosure-row" type="button" aria-expanded={activeOpen} aria-controls="active-tracking" onClick={() => setDisclosure("active", !activeOpen)}><ChevronRight aria-hidden="true" />Active</button>
-    {activeOpen && <div id="active-tracking">{subgroup("active-daily", "Daily habits", dailyRows(active))}{subgroup("active-timed", "Timed activities", timedRows(activeTimed))}{subgroup("active-logs", "Activity log", logRows(activeLogs))}</div>}
-    <button className="disclosure-row" type="button" aria-expanded={archivedOpen} aria-controls="archived-tracking" onClick={() => setDisclosure("archived", !archivedOpen)}><ChevronRight aria-hidden="true" />Archived</button>
-    {archivedOpen && <div id="archived-tracking">{subgroup("archived-daily", "Daily habits", dailyRows(archived, true))}{subgroup("archived-timed", "Timed activities", timedRows(archivedTimed, true))}{subgroup("archived-logs", "Activity log", logRows(archivedLogs, true))}</div>}
+  const subgroup = (label: string, content: React.ReactNode) => <div className="management-subgroup"><h2 className="nested-management">{label}</h2>{content}</div>;
+  return <section className="page list-page"><h1>Archived cards</h1><div className="settings-group management-group">
+    {subgroup("Daily habits", dailyRows(archived, true))}{subgroup("Timed activities", timedRows(archivedTimed, true))}{subgroup("Activity log", logRows(archivedLogs, true))}
   </div>{selectedLog && <ActivityLogManagementDetail activity={selectedLog} onClose={() => setSelectedLog(null)} onChanged={() => setSelectedLog(null)} reportError={reportError} />}</section>;
 }
 
@@ -444,7 +520,7 @@ function MorePage({ config, reportError, imported, theme, onThemeChange, pwaInst
 
 const tabs: { id: Tab; label: string; Icon: typeof CircleCheck }[] = [
   { id: "today", label: "Today", Icon: CircleCheck },
-  { id: "manage", label: "Manage", Icon: Settings2 }, { id: "notifications", label: "Notifications", Icon: Bell },
+  { id: "manage", label: "Archived cards", Icon: Archive }, { id: "notifications", label: "Notifications", Icon: Bell },
   { id: "more", label: "More", Icon: CircleEllipsis },
 ];
 

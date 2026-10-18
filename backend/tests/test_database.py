@@ -20,6 +20,30 @@ def test_empty_database_contains_legacy_tables(store):
     }.issubset(tables)
 
 
+def test_card_order_is_saved_per_type_and_applied_to_day_queries(store):
+    day = store.today().isoformat()
+    first = store.create_habit("First", day)["id"]
+    second = store.create_habit("Second", day)["id"]
+    first_timed = store.create_timed_activity("Timed first", day)["id"]
+    second_timed = store.create_timed_activity("Timed second", day)["id"]
+    first_log = store.create_activity_log("Log first", day)["id"]
+    second_log = store.create_activity_log("Log second", day)["id"]
+    store.save_card_order("daily", [second, first])
+    store.save_card_order("timed", [second_timed, first_timed])
+    store.save_card_order("log", [second_log, first_log])
+    older = (store.today() - timedelta(days=100)).isoformat()
+    appended_daily = store.create_habit("Appended daily", older)["id"]
+    appended_timed = store.create_timed_activity("Appended timed", older)["id"]
+    appended_log = store.create_activity_log("Appended log", older)["id"]
+    assert [item["id"] for item in store.habits_on(day)] == [second, first, appended_daily]
+    assert [item["id"] for item in store.timed_activities_on(day)] == [second_timed, first_timed, appended_timed]
+    assert [item["id"] for item in store.activity_logs_on(day)] == [second_log, first_log, appended_log]
+    with pytest.raises(DomainError, match="unique"):
+        store.save_card_order("daily", [first, first])
+    with pytest.raises(DomainError, match="no longer exist"):
+        store.save_card_order("daily", [99999])
+
+
 def test_countdown_splits_at_local_midnight_and_cancel_discards(store):
     start = datetime(2026, 9, 17, 21, 50, tzinfo=UTC)  # 23:50 in Warsaw
     activity = store.create_timed_activity("Offline", "2026-09-17")

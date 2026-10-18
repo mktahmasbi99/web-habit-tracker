@@ -58,6 +58,7 @@ async function download(url: string, options?: RequestInit): Promise<{ blob: Blo
 export const api = {
   config: () => request<Config>("/api/config"),
   saveTheme: (theme: Theme) => request<{ theme: Theme }>("/api/settings/theme", json("PUT", { theme })),
+  saveCardOrder: (type: "daily" | "timed" | "log", ids: number[]) => request<{ ids: number[] }>(`/api/card-orders/${type}`, json("PUT", { ids })),
   habits: (day: string, signal?: AbortSignal) => request<HabitDay[]>(`/api/days/${day}/habits`, { signal }),
   createHabit: (name: string, startDate: string) => request<{ id: number }>("/api/habits", json("POST", { name, startDate })),
   timedActivities: (day: string, signal?: AbortSignal) => request<TimedActivityDay[]>(`/api/days/${day}/timed-activities`, { signal }),
