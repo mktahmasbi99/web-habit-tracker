@@ -93,6 +93,15 @@ test("daily habit details show their own done, missed, and pending calendar", as
   await expect(page.getByRole("gridcell", { name: "2026-09-09, inactive" }).locator(".markers")).toHaveCount(0);
 });
 
+test("daily habit cards open from their empty card area", async ({ page }) => {
+  await fixture(page); await page.goto("/");
+  const card = page.locator(".daily-section .habit-card").first();
+  const box = await card.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width - 12, box!.y + box!.height / 2);
+  await expect(page.getByRole("heading", { name: "Monthly status" })).toBeVisible();
+});
+
 test("navigation and large text fit without horizontal overflow", async ({ page }, testInfo) => {
   await fixture(page); await page.goto("/");
   const nav = page.getByRole("navigation");

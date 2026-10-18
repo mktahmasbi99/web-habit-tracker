@@ -17,6 +17,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Timed activity details show a time chart with weekly, monthly, six-month, yearly, all-time, and custom date ranges, alongside the selected day's total and the chosen period's total
 - Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a full-screen monthly completion calendar and dated Notes notebook, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current streaks beside each daily habit, plus current, longest, and historical streak statistics in each habit sheet
+- Open a daily habit from anywhere on its Today card, while keeping status and note controls independently clickable
 - Per-item, per-day notes for daily habits, timed activities, and activity-log items, with full-screen read, edit, and delete controls, direct note URLs, and dated history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
 - Dedicated Management navigation divided into active and archived Daily habits, Timed activities, and Activity log items

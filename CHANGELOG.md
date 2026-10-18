@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Open daily habit details by selecting anywhere on the Today card, while preserving independent status and note controls.
+
 - Limit habit streak histories to three visible entries initially, with a View more control for the remaining streaks.
 
 - Fade archived items in Today and keep archived note histories read-only, without an add, edit, or delete action.
