@@ -100,7 +100,7 @@ test("daily habit cards open from their empty card area", async ({ page }) => {
 test("navigation and large text fit without horizontal overflow", async ({ page }, testInfo) => {
   await fixture(page); await page.goto("/");
   const nav = page.getByRole("navigation");
-  for (const name of ["Today", "Manage", "Notifications", "More"]) {
+  for (const name of ["Today", "Archived cards", "Notifications", "More"]) {
     const button = nav.getByRole("button", { name, exact: true }); await expect(button).toBeInViewport();
     const box = await button.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(44);
   }
@@ -199,10 +199,10 @@ test("calendar can jump back to today without completion markers", async ({ page
 
 test("timed management details support direct URLs and browser Back", async ({ page }) => {
   await fixture(page);
-  const activity = { id: 10, name: "Study", startDate: "2026-09-01", archived: false, noteCount: 0 };
+  const activity = { id: 10, name: "Study", startDate: "2026-09-01", archived: true, archivedAt: "2026-09-08", noteCount: 0 };
   await page.route("**/api/timed-activities", route => route.fulfill({ json: [activity] }));
   await page.route("**/api/timed-activities/10", route => route.fulfill({ json: activity }));
-  await page.goto("/"); await page.getByRole("button", { name: "Manage", exact: true }).click();
+  await page.goto("/"); await page.getByRole("button", { name: "Archived cards", exact: true }).click();
   await page.getByRole("button", { name: /Study/ }).click();
   await expect(page).toHaveURL(/\/timed-activities\/10$/);
   await expect(page.getByRole("heading", { name: "Study" })).toBeVisible();

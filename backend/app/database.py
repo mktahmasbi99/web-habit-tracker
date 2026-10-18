@@ -499,7 +499,7 @@ class HabitDatabase:
         table = {"daily": "habits", "timed": "timed_activities", "log": "activity_logs"}[entity_type]
         with self.connect() as connection, connection:
             existing = [row[0] for row in connection.execute(
-                f"SELECT entity_id FROM web_card_orders WHERE entity_type = ? ORDER BY position",
+                "SELECT entity_id FROM web_card_orders WHERE entity_type = ? ORDER BY position",
                 (entity_type,),
             )]
             unknown = set(ids) - {row[0] for row in connection.execute(f"SELECT id FROM {table}")}
