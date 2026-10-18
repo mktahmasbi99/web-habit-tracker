@@ -4,7 +4,7 @@ export type Theme = "system" | "noir" | "retro";
 export interface Config { today: string; timezone: string; theme: Theme }
 export interface HabitDay {
   id: number; name: string; startDate: string; status: Status;
-  currentStreak: number; hasNote: boolean;
+  currentStreak: number; recordStreak: boolean; hasNote: boolean;
 }
 export interface TimedActivityDay {
   id: number; name: string; startDate: string; dayMinutes: number; weekMinutes: number; hasNote: boolean; archived: boolean;

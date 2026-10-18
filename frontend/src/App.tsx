@@ -113,6 +113,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const loadedDateRef = useRef("");
   const writes = useRef(new Set<string>());
   const [pendingWrites, setPendingWrites] = useState(new Set<string>());
+  const [celebratingRecords, setCelebratingRecords] = useState(new Set<number>());
   const [calendar, setCalendar] = useState(false);
   const [adding, setAdding] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(() => { try { return window.localStorage?.getItem?.("daily-habits-open") !== "false"; } catch { return true; } });
@@ -213,7 +214,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     setLoadError(false);
     try {
       const [daily, activities, logs, allDaily] = await Promise.all([api.habits(selectedDate, controller.signal), api.timedActivities(selectedDate, controller.signal), api.activityLogs(selectedDate, controller.signal), api.habitSummaries()]);
-      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); setArchivedHabitIds(new Set(allDaily.filter(item => item.archived).map(item => item.id))); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); }
+      if (!controller.signal.aborted) { setHabits(daily); setTimed(activities); setActivityLogs(logs); setArchivedHabitIds(new Set(allDaily.filter(item => item.archived).map(item => item.id))); loadedDateRef.current = selectedDate; setLoadedDate(selectedDate); return daily; }
     } catch (error) { if (!controller.signal.aborted) { setLoadError(true); reportError(error); } }
     finally { if (!controller.signal.aborted) setLoading(false); }
   }, [selectedDate, reportError]);
@@ -231,7 +232,14 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     const key = `${selectedDate}:${habit.id}`;
     if (writes.current.has(key)) return;
     writes.current.add(key); setPendingWrites(new Set(writes.current));
-    try { await api.setStatus(habit.id, selectedDate, status); onDataChange(); }
+    try {
+      await api.setStatus(habit.id, selectedDate, status);
+      const updatedHabits = await load();
+      if (status === "done" && habit.status !== "done" && updatedHabits?.find(item => item.id === habit.id)?.recordStreak) {
+        setCelebratingRecords(current => new Set(current).add(habit.id));
+      }
+      onDataChange();
+    }
     catch (error) { reportError(error); }
     finally { writes.current.delete(key); setPendingWrites(new Set(writes.current)); }
   };
@@ -254,7 +262,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
       <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={dailyOpen} aria-controls="daily-habit-list" onClick={() => { const next = !dailyOpen; setDailyOpen(next); try { window.localStorage?.setItem?.("daily-habits-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Daily habits</strong><small>Complete once each day</small></span></button></div>
       {reorderMode === "daily" && <div className="reorder-toolbar" role="status"><span>Rearranging daily habits · drag cards to reorder</span><button type="button" onClick={() => setReorderMode(null)}>Done</button></div>}
       {dailyOpen && <div id="daily-habit-list">{visibleHabits.length === 0 ? <p className="timed-empty">No daily habits on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "daily" ? "reorder-list" : ""}`}>{visibleHabits.map((habit, index) => <article className={`habit-card ${reorderMode === "daily" ? "reorder-card" : ""}`} key={habit.id} aria-busy={pendingWrites.has(`${selectedDate}:${habit.id}`)} {...holdProps("daily")} {...dragProps("daily", habit.id)}>
-        <button className="habit-card-open habit-card-head" onClick={() => openHabit?.(habit.id)} aria-label={`Open ${habit.name}`}><h2>{habit.name}</h2><span><Flame size={14} /> {habit.currentStreak} streak</span></button>
+        <button className="habit-card-open habit-card-head" onClick={() => openHabit?.(habit.id)} aria-label={`Open ${habit.name}`}><h2>{habit.name}</h2><span className={habit.recordStreak ? `streak-record${celebratingRecords.has(habit.id) ? " streak-record-celebrating" : ""}` : ""} onAnimationEnd={() => setCelebratingRecords(current => { const next = new Set(current); next.delete(habit.id); return next; })}><Flame size={14} aria-hidden="true" /> {habit.currentStreak} streak</span></button>
         {pendingWrites.has(`${selectedDate}:${habit.id}`) && <small role="status">Saving…</small>}
         <div className="habit-actions">
           <div className="status-group">{(["pending", "done", "missed"] as Status[]).map(status =>

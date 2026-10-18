@@ -1541,14 +1541,24 @@ class HabitDatabase:
             ).fetchall()
             done_by_habit = self._done_logs_for(connection, [row["id"] for row in rows], day)
         selected = date.fromisoformat(day)
-        return [{
-            "id": row["id"], "name": row["name"], "startDate": row["start_date"],
-            "status": row["status"],
-            "currentStreak": self._current_streak_from_done(
-                date.fromisoformat(row["start_date"]), selected, done_by_habit[row["id"]]
-            ),
-            "hasNote": bool(row["has_note"]),
-        } for row in rows]
+        output = []
+        for row in rows:
+            habit_start = date.fromisoformat(row["start_date"])
+            done = done_by_habit[row["id"]]
+            current_streak = self._current_streak_from_done(habit_start, selected, done)
+            streaks = self._streaks_from_done(habit_start, selected, done)
+            current_end = selected if selected.isoformat() in done else selected - timedelta(days=1)
+            prior_best = max(
+                (streak["length"] for streak in streaks if streak["endDate"] != current_end.isoformat()),
+                default=0,
+            )
+            output.append({
+                "id": row["id"], "name": row["name"], "startDate": row["start_date"],
+                "status": row["status"], "currentStreak": current_streak,
+                "recordStreak": current_streak > prior_best and current_streak > 0,
+                "hasNote": bool(row["has_note"]),
+            })
+        return output
 
     def habit_summaries(self) -> list[dict]:
         with self.connect() as connection:

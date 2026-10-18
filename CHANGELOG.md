@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Briefly animate a daily habit’s fire when its current streak sets a new record, then keep the fire and streak count in a fired-up color while it remains the record.
+
 - Reorder Today cards in each Daily habits, Timed activities, and Activity log section with a long press and drag and drop; save order to the server across dates and devices.
 
 - Move archived cards out of Today’s sections and provide a dedicated Archived cards view.
