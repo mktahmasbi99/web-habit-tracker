@@ -248,11 +248,7 @@ function ActivityLogDetail({ activity, selectedDate, today, onClose, onNavigateT
 function AddHabit({ defaultDate, onClose, onSave }: { defaultDate: string; onClose: () => void; onSave: (name: string, date: string, kind: "daily" | "timed" | "log") => Promise<void> }) {
   const [name, setName] = useState(""); const [date, setDate] = useState(defaultDate); const [kind, setKind] = useState<"daily" | "timed" | "log">("daily"); const [saving, setSaving] = useState(false);
   return <Modal title="New activity" onClose={onClose}><form className="form" onSubmit={event => { event.preventDefault(); setSaving(true); void onSave(name, date, kind).finally(() => setSaving(false)); }}>
-    <fieldset className="activity-type-picker"><legend>Type</legend><div className="activity-type-options">
-      <label className={kind === "daily" ? "selected" : ""}><input type="radio" name="activity-type" value="daily" checked={kind === "daily"} onChange={() => setKind("daily")} /><span>Daily habit</span></label>
-      <label className={kind === "timed" ? "selected" : ""}><input type="radio" name="activity-type" value="timed" checked={kind === "timed"} onChange={() => setKind("timed")} /><span>Timed activity</span></label>
-      <label className={kind === "log" ? "selected" : ""}><input type="radio" name="activity-type" value="log" checked={kind === "log"} onChange={() => setKind("log")} /><span>Activity log</span></label>
-    </div></fieldset>
+    <label>Type<select value={kind} onChange={event => setKind(event.target.value as "daily" | "timed" | "log")}><option value="daily">Daily habit</option><option value="timed">Timed activity</option><option value="log">Activity log</option></select></label>
     <label>{kind === "daily" ? "Habit name" : "Activity name"}<input autoFocus value={name} maxLength={200} onChange={event => setName(event.target.value)} placeholder={kind === "log" ? "Change vase water, clean filter…" : kind === "timed" ? "Study, read, exercise…" : "Read, walk, meditate…"} /></label>
     <label>Start date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
     <button className="form-submit" disabled={!name.trim() || saving}>{saving ? "Adding…" : kind === "timed" ? "Add timed activity" : kind === "log" ? "Add activity log" : "Add habit"}</button>

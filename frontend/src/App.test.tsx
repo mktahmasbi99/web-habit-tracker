@@ -142,16 +142,15 @@ describe("Habit Tracker", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Mark Change vase water not done" })).toHaveAttribute("aria-pressed", "true"));
   });
 
-  it("uses in-sheet radio choices for the activity type", async () => {
+  it("uses a dropdown to choose the activity type", async () => {
     const user = userEvent.setup(); render(<App />);
     await user.click(await screen.findByRole("button", { name: "Add habit" }));
     const dialog = screen.getByRole("dialog", { name: "New activity" });
-    expect(dialog.querySelector("select")).toBeNull();
-    const daily = screen.getByRole("radio", { name: "Daily habit" });
-    const timed = screen.getByRole("radio", { name: "Timed activity" });
-    expect(daily).toBeChecked();
-    await user.click(timed);
-    expect(timed).toBeChecked();
+    const type = screen.getByRole("combobox", { name: "Type" });
+    expect(type).toHaveValue("daily");
+    expect(dialog.querySelectorAll("input[type=radio]")).toHaveLength(0);
+    await user.selectOptions(type, "timed");
+    expect(type).toHaveValue("timed");
     expect(screen.getByRole("textbox", { name: "Activity name" })).toBeInTheDocument();
     expect(screen.queryByText("Daily habit (done or missed)")).not.toBeInTheDocument();
   });

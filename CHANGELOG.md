@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Use a compact dropdown to choose between Daily habit, Timed activity, and Activity log when adding an activity.
+
 - Add selectable weekly, monthly, six-month, yearly, all-time, and custom timed-activity charts with period totals, while retaining the selected day's total.
 
 - Keep timed-session mode radio hit targets contained within their labels so adjacent controls cannot intercept taps on narrow screens.

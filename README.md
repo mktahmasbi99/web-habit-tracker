@@ -10,6 +10,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 
 - Today and historical date navigation with a Monday-first calendar and a Jump to today action
 - Daily habit creation from any selected date
+- A compact activity-type dropdown for creating daily habits, timed activities, and activity-log items
 - Pending, Done, and Missed status controls
 - Per-habit monthly status calendars with green Done, red Missed, and orange Pending markers through today, refreshed immediately after a start-date edit
 - Expandable Timed activities with manual duration entry plus server-backed, concurrent Pomodoro, countdown, and stopwatch timers on Today; timers survive client and server restarts, split completed time across local midnight, and feed the existing editable entries, daily totals, and weekly history
