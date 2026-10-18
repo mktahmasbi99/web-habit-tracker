@@ -6,6 +6,20 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Limit habit streak histories to three visible entries initially, with a View more control for the remaining streaks.
+
+- Fade archived items in Today and keep archived note histories read-only, without an add, edit, or delete action.
+
+- Remove daily habits, timed activities, and activity-log items from Today’s active lists immediately after archiving; retain same-day history and show them in their section’s archived area.
+
+- Remove the global Notes tab and add per-section archived-item toggles on Today, keeping daily, timed, and activity-log note histories accessible from their item details.
+
+- Keep the timed-note editor above the notebook and preserve the logging sheet when navigating back through the nested note history.
+
+- Show Activity log calendar details full-screen and add a top-bar Notes notebook with dated history and a + action for today’s note.
+
+- Add a full-screen Notes notebook to Timed activity details and the time logging sheet, with dated history and a + action to create or edit today’s note when the activity is active.
+
 - Use a compact dropdown to choose between Daily habit, Timed activity, and Activity log when adding an activity.
 
 - Add selectable weekly, monthly, six-month, yearly, all-time, and custom timed-activity charts with period totals, while retaining the selected day's total.

@@ -12,8 +12,12 @@ let noteSummaries: unknown[];
 let habitNotes: unknown[];
 let habitName: string;
 let habitStartDate: string;
+let habitStreaks: Array<{ startDate: string; endDate: string; length: number }>;
 let timedActivities: unknown[];
 let activityLogs: unknown[];
+let archivedHabit = false;
+let archivedTimedActivity = false;
+let archivedActivityLog = false;
 let timerSnapshot: { serverNow: string; timers: Array<Record<string, unknown>> };
 
 describe("Habit Tracker", () => {
@@ -25,8 +29,12 @@ describe("Habit Tracker", () => {
     habitNotes = [];
     habitName = "Read";
     habitStartDate = "2026-08-26";
+    habitStreaks = [];
     timedActivities = [];
     activityLogs = [];
+    archivedHabit = false;
+    archivedTimedActivity = false;
+    archivedActivityLog = false;
     try { window.localStorage?.setItem?.("stopwatch-interval-alert", ""); } catch { /* optional storage */ }
     timerSnapshot = { serverNow: new Date().toISOString(), timers: [] };
     window.history.replaceState(null, "", "/");
@@ -38,14 +46,17 @@ describe("Habit Tracker", () => {
       if (url === "/api/system-notifications") return ok([]);
       if (url === "/api/backups") return ok([]);
       if (url === "/api/backups/settings") return ok({ dailyEnabled: true, dailyTime: "01:00", dailyRetention: 7, weeklyEnabled: true, weeklyDay: 6, weeklyTime: "01:00", weeklyRetention: 8, safetyRetention: 8 });
-      if (url === "/api/habits") return ok([{ id: 1, name: "Read", startDate: "2026-08-26", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0 }, { id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1 }]);
+      if (url === "/api/habits") return ok([{ id: 1, name: "Read", startDate: "2026-08-26", archived: archivedHabit, archivedAt: archivedHabit ? "2026-08-26" : null, latestActiveRange: archivedHabit ? { startDate: "2026-08-26", endDate: "2026-08-26" } : null, noteCount: 0 }, { id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1 }]);
       if (url === "/api/habits/1") {
+        if (/\/archive$/.test(url) && init?.method === "POST") archivedHabit = true;
         if (init?.method === "PATCH") { const body = JSON.parse(String(init.body)); habitName = body.name; habitStartDate = body.startDate; }
-        return ok({ id: 1, name: habitName, startDate: habitStartDate, archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] });
+        return ok({ id: 1, name: habitName, startDate: habitStartDate, archived: archivedHabit, archivedAt: archivedHabit ? "2026-08-26" : null, latestActiveRange: archivedHabit ? { startDate: habitStartDate, endDate: "2026-08-26" } : null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: habitStreaks });
       }
+      if (url === "/api/habits/1/archive" && init?.method === "POST") { archivedHabit = true; return ok({ id: 1, name: habitName, startDate: habitStartDate, archived: true, archivedAt: "2026-08-26", latestActiveRange: { startDate: habitStartDate, endDate: "2026-08-26" }, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] }); }
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
       if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
+      if (/^\/api\/timed-activities\/\d+\/days\/\d{4}-\d{2}-\d{2}\/note$/.test(url)) return ok(noteResponse);
       if (url === "/api/timed-activity-timers") return ok(timerSnapshot);
       if (/^\/api\/timed-activities\/\d+\/timer\/stop$/.test(url) && init?.method === "POST") {
         const id = Number(url.split("/")[3]); timerSnapshot.timers = timerSnapshot.timers.filter(timer => timer.activityId !== id); return ok({ recordedMinutes: 20 });
@@ -62,8 +73,12 @@ describe("Habit Tracker", () => {
       }
       if (url === "/api/timed-activities/10/weeks/2026-08-26") { const minutes = Number((timedActivities.find(item => (item as { id?: number }).id === 10) as { dayMinutes?: number } | undefined)?.dayMinutes ?? 90); return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes, entries: minutes ? [{ id: 100, minutes }] : [], active: true }], note: "" }); }
       if (url === "/api/timed-activities/10/weeks/2026-08-25") return ok({ id: 10, name: "Study", startDate: "2026-08-25", selectedDate: "2026-08-25", days: [{ date: "2026-08-25", minutes: 30, entries: [{ id: 99, minutes: 30 }], active: true }], note: "" });
-      if (url === "/api/timed-activities" || url === "/api/timed-activities/notes/summaries") return ok([]);
-      if (url === "/api/activity-logs") return ok([]);
+      if (url === "/api/timed-activities") return ok(archivedTimedActivity ? [{ id: 10, name: "Study", startDate: "2026-08-26", archived: true, archivedAt: "2026-08-26", noteCount: 0 }] : []);
+      if (url === "/api/timed-activities/notes/summaries") return ok([]);
+      if (url === "/api/timed-activities/10" && init?.method !== "POST") return ok({ id: 10, name: "Study", startDate: "2026-08-26", archived: archivedTimedActivity, archivedAt: archivedTimedActivity ? "2026-08-26" : null, noteCount: 0 });
+      if (url === "/api/timed-activities/10/archive" && init?.method === "POST") { archivedTimedActivity = true; timedActivities = (timedActivities as Array<Record<string, unknown>>).map(item => ({ ...item, archived: true })); return ok({ id: 10, name: "Study", startDate: "2026-08-26", archived: true, archivedAt: "2026-08-26", noteCount: 0 }); }
+      if (url === "/api/activity-logs") return ok(archivedActivityLog ? [{ id: 8, name: "Change vase water", startDate: "2026-08-01", archived: true, archivedAt: "2026-08-26", noteCount: 0 }] : []);
+      if (url === "/api/activity-logs/8/archive" && init?.method === "POST") { archivedActivityLog = true; activityLogs = (activityLogs as Array<Record<string, unknown>>).map(item => ({ ...item, archived: true })); return ok({ id: 8, name: "Change vase water", startDate: "2026-08-01", archived: true, archivedAt: "2026-08-26", noteCount: 0 }); }
       if (url === "/api/activity-logs/8/months/2026-08") return ok({ id: 8, name: "Change vase water", month: "2026-08", days: [{ date: "2026-08-25", active: true, completed: true, hasNote: false }] });
       if (/^\/api\/activity-logs\/\d+\/days\/\d{4}-\d{2}-\d{2}\/completion$/.test(url)) {
         const body = JSON.parse(String(init?.body)) as { status: string };
@@ -94,6 +109,26 @@ describe("Habit Tracker", () => {
       expect(button).not.toHaveTextContent(name);
     }
     expect(await navigation.findByRole("button", { name: "Notifications, 1 unresolved dates" })).toHaveTextContent("1");
+  });
+
+  it("shows only three streaks initially and expands the rest on request", async () => {
+    habitStreaks = [
+      { startDate: "2026-08-01", endDate: "2026-08-09", length: 9 },
+      { startDate: "2026-07-01", endDate: "2026-07-07", length: 7 },
+      { startDate: "2026-06-01", endDate: "2026-06-05", length: 5 },
+      { startDate: "2026-05-01", endDate: "2026-05-04", length: 4 },
+    ];
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Read" }));
+    await user.click(await screen.findByRole("button", { name: "History" }));
+    expect(await screen.findByText("9 days")).toBeInTheDocument();
+    expect(screen.getByText("7 days")).toBeInTheDocument();
+    expect(screen.getByText("5 days")).toBeInTheDocument();
+    expect(screen.queryByText("4 days")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "View more" }));
+    expect(screen.getByText("4 days")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show less" }));
+    expect(screen.queryByText("4 days")).not.toBeInTheDocument();
   });
 
   it("keeps the current screen visible and marks connection loss", async () => {
@@ -140,6 +175,54 @@ describe("Habit Tracker", () => {
     expect(done).toHaveAttribute("aria-pressed", "false");
     await user.click(done);
     await waitFor(() => expect(screen.getByRole("button", { name: "Mark Change vase water not done" })).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("removes a daily habit from Today after archiving and keeps it under Show archived", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Read" }));
+    await user.click(screen.getByRole("button", { name: "More habit options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
+    expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archive habit" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Pending" })).not.toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Close habit details" }));
+    await user.click(screen.getByRole("button", { name: "Show archived \(2\)" }));
+    expect(screen.getByRole("button", { name: /Read.*Archived · view history and notes/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pending" })).toBeInTheDocument();
+  });
+
+  it("removes a timed activity from Today after archiving and keeps it under Show archived", async () => {
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 30, weekMinutes: 30, hasNote: false, archived: false }];
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    await user.click(screen.getByRole("button", { name: "More timed activity options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
+    expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archive activity" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Study" })).not.toBeInTheDocument());
+    await user.click(within(document.querySelector(".today-page > .timed-section:not(.daily-section):not(.activity-log-section)")!).getByRole("button", { name: "Show archived \(1\)" }));
+    expect(screen.getByRole("button", { name: /Study.*Archived · 0 notes/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Study" })).toBeInTheDocument();
+  });
+
+  it("removes an activity log from Today after archiving and keeps it under Show archived", async () => {
+    activityLogs = [{ id: 8, name: "Change vase water", startDate: "2026-08-01", lastCompletedDate: "2026-08-22", completed: false, hasNote: false, archived: false }];
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Change vase water" }));
+    await user.click(screen.getByRole("button", { name: "More activity log options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Archive" }));
+    expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Archive activity" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Change vase water" })).not.toBeInTheDocument());
+    await user.click(within(document.querySelector(".activity-log-section")!).getByRole("button", { name: "Show archived \(1\)" }));
+    expect(screen.getByRole("button", { name: /Change vase water.*Archived · 0 notes/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Change vase water" })).toBeInTheDocument();
   });
 
   it("uses a dropdown to choose the activity type", async () => {
@@ -411,6 +494,16 @@ describe("Habit Tracker", () => {
       "/api/habits/1/days/2026-08-26/note",
       expect.objectContaining({ method: "PUT", body: JSON.stringify({ body: "Finished a chapter" }) }),
     ));
+  });
+
+  it("opens archived notes read-only without Save, edit, or delete controls", async () => {
+    noteResponse = { habitId: 3, habitName: "Archived activity", date: "2026-10-17", body: "Earlier note", exists: true, archived: true };
+    window.history.replaceState(null, "", "/timed-activities/3/notes/2026-10-17");
+    render(<App />);
+    expect(await screen.findByText("Earlier note")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit note" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "More note options" })).not.toBeInTheDocument();
   });
 
   it("opens an existing note read-only, cancels edits, and confirms deletion without typed text", async () => {

@@ -15,11 +15,11 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Per-habit monthly status calendars with green Done, red Missed, and orange Pending markers through today, refreshed immediately after a start-date edit
 - Expandable Timed activities with manual duration entry plus server-backed, concurrent Pomodoro, countdown, and stopwatch timers on Today; timers survive client and server restarts, split completed time across local midnight, and feed the existing editable entries, daily totals, and weekly history
 - Timed activity details show a time chart with weekly, monthly, six-month, yearly, all-time, and custom date ranges, alongside the selected day's total and the chosen period's total
-- Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a monthly completion calendar, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
+- Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a full-screen monthly completion calendar and dated Notes notebook, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current streaks beside each daily habit, plus current, longest, and historical streak statistics in each habit sheet
-- Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
+- Per-item, per-day notes for daily habits, timed activities, and activity-log items, with full-screen read, edit, and delete controls, direct note URLs, and dated history; press Ctrl+Enter or Cmd+Enter while editing to save and exit
 - Habit management with rename, reversible archive and restore, period-scoped history, and protected permanent deletion
-- Dedicated Management navigation divided into active and archived Daily habits and Timed activities
+- Dedicated Management navigation divided into active and archived Daily habits, Timed activities, and Activity log items
 - Icon-only main navigation with accessible button names, hover tooltips, and an unresolved-date count badge
 - Unresolved past-date notifications inside the app
 - Validated import of compatible terminal/iPhone SQLite databases
@@ -27,7 +27,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Responsive phone and desktop layouts with a shared skin selection; System follows each device's light or dark mode
 - Docker image and NAS Compose deployment
 
-Daily habit details include a Notes button opening that habit’s complete note history, newest first, including earlier active periods. Use + in this history to open today’s note directly, using the server’s date. If today already has a note, it opens for editing. New notes require an active date; existing notes remain editable. The Today-card note shortcut and global Notes tab remain available.
+Daily habit, Timed activity, and Activity log details include a Notes button opening that item’s complete dated note history. Use + in a notebook to open today’s note directly, using the server’s date. If today already has a note, it opens for editing. New notes require an active date; existing notes remain editable. Today has per-section Show archived toggles so archived items and their notes remain reachable after removing the global Notes tab. Archiving an item removes it from its active Today list immediately, while preserving that day’s history and showing the item in the archived area. Archived Today cards are faded, and notes for archived items are view-only. Habit streak history initially shows three streaks; select View more to show the remaining history.
 
 ## Status rules
 

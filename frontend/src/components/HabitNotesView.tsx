@@ -46,6 +46,7 @@ export default function HabitNotesView({ habitId, today, refresh, active, onClos
     onClose();
   };
   const openTodayNote = async () => {
+    if (!habit || habit.archived) return;
     const token = ++request.current;
     setChecking(true); setDateError("");
     try {
@@ -76,14 +77,14 @@ export default function HabitNotesView({ habitId, today, refresh, active, onClos
     }}>
     <header className="habit-detail-bar">
       <button className="round-bar-button" onClick={back} aria-label="Back to habit details"><ChevronLeft /></button>
-      <div className="detail-actions"><button disabled={!habit || loading || checking || Boolean(error)} onClick={event => { noteTrigger.current = event.currentTarget; void openTodayNote(); }} aria-label="Add habit note" aria-busy={checking}><Plus /></button></div>
+      {!habit?.archived && <div className="detail-actions"><button disabled={!habit || loading || checking || Boolean(error)} onClick={event => { noteTrigger.current = event.currentTarget; void openTodayNote(); }} aria-label="Add habit note" aria-busy={checking}><Plus /></button></div>}
     </header>
     <main className="habit-detail-content">
       <h1>{habit?.name ?? "Notes"}</h1>
       <h2>Notes</h2>
       {checking && <p role="status">Opening today’s note…</p>}
       {dateError && <p role="alert">{dateError}</p>}
-      {loading ? <p role="status">Loading notes…</p> : error ? <div role="alert"><p>{error}</p><button className="small-button" onClick={() => setAttempt(value => value + 1)}>Retry</button></div> : notes.length ? <div className="note-history">{notes.map(note => <button key={note.date} onClick={event => { noteTrigger.current = event.currentTarget; openNote(note.date, false); }}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <div className="habit-notes-empty"><StickyNote aria-hidden="true" /><h3>No notes yet</h3><p>Use + to add the first note for this habit.</p></div>}
+      {loading ? <p role="status">Loading notes…</p> : error ? <div role="alert"><p>{error}</p><button className="small-button" onClick={() => setAttempt(value => value + 1)}>Retry</button></div> : notes.length ? <div className="note-history">{notes.map(note => <button key={note.date} onClick={event => { noteTrigger.current = event.currentTarget; openNote(note.date, false); }}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <div className="habit-notes-empty"><StickyNote aria-hidden="true" /><h3>No notes yet</h3><p>{habit?.archived ? "There are no saved notes for this archived habit." : "Use + to add the first note for this habit."}</p></div>}
     </main>
   </div>;
 }

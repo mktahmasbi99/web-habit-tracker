@@ -45,3 +45,11 @@ it("retries failed history reads and refreshes after note changes", async () => 
   expect(openNote).toHaveBeenCalledWith("2026-08-25", false);
   expect(api.habitNotes).toHaveBeenCalledWith(1);
 });
+it("keeps archived habit notes readable without offering a new-note action", async () => {
+  vi.mocked(api.habitDetail).mockResolvedValue({ id: 1, name: "Read", archived: true } as Awaited<ReturnType<typeof api.habitDetail>>);
+  vi.mocked(api.habitNotes).mockResolvedValue([{ habitId: 1, habitName: "Read", date: "2026-08-25", body: "Earlier note" }]);
+  const user = userEvent.setup(); render(<HabitNotesView {...props} />);
+  await user.click(await screen.findByRole("button", { name: /Earlier note/ }));
+  expect(screen.queryByRole("button", { name: "Add habit note" })).not.toBeInTheDocument();
+  expect(openNote).toHaveBeenCalledWith("2026-08-25", false);
+});
