@@ -7,6 +7,7 @@ async function fixture(page: Page) {
     let body: unknown = [];
     if (path === "/api/config") body = { today, timezone: "Europe/Warsaw" };
     if (path === "/api/timed-activity-timers") body = { serverNow: new Date().toISOString(), timers: [] };
+    if (/^\/api\/timed-activities\/\d+\/statistics$/.test(path)) body = { days: [] };
     if (path === "/api/habits/1") body = { id: 1, name: "Read", startDate: "2026-01-01", archived: false, archivedAt: null, latestActiveRange: null, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] };
     if (/\/api\/habits\/1\/months\/\d{4}-\d{2}$/.test(path)) body = { id: 1, name: "Read", startDate: "2026-01-01", month: "2026-09", days: [{ date: "2026-09-01", active: true, status: "done" }, { date: "2026-09-02", active: true, status: "missed" }, { date: "2026-09-03", active: true, status: "pending" }, { date: "2026-09-09", active: false, status: null }] };
     if (/\/days\/.*\/habits$/.test(path)) body = [{ id: 1, name: "Read", status: "pending", currentStreak: 0, hasNote: false, startDate: "2026-01-01" }];
@@ -49,20 +50,14 @@ test("pending status writes block competing taps", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Done", exact: true })).toBeEnabled();
 });
 
-test("activity type uses large in-sheet radio choices", async ({ page }) => {
+test("activity type can be selected in the new activity sheet", async ({ page }) => {
   await fixture(page); await page.goto("/");
   await page.getByRole("button", { name: "Add habit" }).click();
   const dialog = page.getByRole("dialog", { name: "New activity" });
-  await expect(dialog.locator("select")).toHaveCount(0);
-  const daily = dialog.getByRole("radio", { name: "Daily habit" });
-  const timed = dialog.getByRole("radio", { name: "Timed activity" });
-  await expect(daily).toBeChecked();
-  for (const option of [daily, timed]) {
-    const box = await option.boundingBox(); expect(box!.height).toBeGreaterThanOrEqual(19.9);
-    const labelBox = await option.locator("xpath=..").boundingBox(); expect(labelBox!.height).toBeGreaterThanOrEqual(51.9);
-  }
-  await timed.check();
-  await expect(timed).toBeChecked();
+  const type = dialog.getByLabel("Type");
+  await expect(type).toHaveValue("daily");
+  await expect(type.locator("option")).toHaveText(["Daily habit", "Timed activity", "Activity log"]);
+  await type.selectOption("timed");
   await expect(dialog.getByRole("textbox", { name: "Activity name" })).toBeVisible();
 });
 
