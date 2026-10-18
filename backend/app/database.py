@@ -654,7 +654,7 @@ class HabitDatabase:
         if end < start:
             raise DomainError("The end date must be on or after the start date.")
         with self.connect() as connection:
-            activity = self._timed_row(connection, activity_id)
+            self._timed_row(connection, activity_id)
             rows = connection.execute(
                 """SELECT entry_date, SUM(minutes) AS minutes FROM timed_activity_entries
                    WHERE activity_id = ? AND entry_date BETWEEN ? AND ?

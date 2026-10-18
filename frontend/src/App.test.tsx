@@ -102,7 +102,7 @@ describe("Habit Tracker", () => {
     expect(screen.getByRole("button", { name: "Pending" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Europe/Warsaw")).not.toBeInTheDocument();
     const navigation = within(screen.getByRole("navigation", { name: "Main navigation" }));
-    for (const name of ["Today", "Notes", "Manage", "Notifications", "More"]) {
+    for (const name of ["Today", "Manage", "Notifications", "More"]) {
       const button = navigation.getByRole("button", { name: new RegExp(`^${name}(,|$)`) });
       expect(button).toHaveAttribute("title", name);
       expect(button.querySelector("svg")).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe("Habit Tracker", () => {
     await user.click(screen.getByRole("button", { name: "Archive habit" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Pending" })).not.toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: "Close habit details" }));
-    await user.click(screen.getByRole("button", { name: "Show archived \(2\)" }));
+    await user.click(screen.getByRole("button", { name: "Show archived (2)" }));
     expect(screen.getByRole("button", { name: /Read.*Archived · view history and notes/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
@@ -202,7 +202,7 @@ describe("Habit Tracker", () => {
     expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive activity" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Open Study" })).not.toBeInTheDocument());
-    await user.click(within(document.querySelector(".today-page > .timed-section:not(.daily-section):not(.activity-log-section)")!).getByRole("button", { name: "Show archived \(1\)" }));
+    await user.click(within(document.querySelector(".today-page > .timed-section:not(.daily-section):not(.activity-log-section)")!).getByRole("button", { name: "Show archived (1)" }));
     expect(screen.getByRole("button", { name: /Study.*Archived · 0 notes/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("Habit Tracker", () => {
     expect(screen.getByText(/disappear from today’s active list immediately/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Archive activity" }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Open Change vase water" })).not.toBeInTheDocument());
-    await user.click(within(document.querySelector(".activity-log-section")!).getByRole("button", { name: "Show archived \(1\)" }));
+    await user.click(within(document.querySelector(".activity-log-section")!).getByRole("button", { name: "Show archived (1)" }));
     expect(screen.getByRole("button", { name: /Change vase water.*Archived · 0 notes/ })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     expect(await screen.findByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
@@ -371,8 +371,8 @@ describe("Habit Tracker", () => {
     expect(await screen.findByText("0 streak")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Stats" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Open Study" }));
-    expect(await screen.findByRole("heading", { name: "Weekly statistics" })).toBeInTheDocument();
-    expect(screen.getByText("Week through this day")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Time chart" })).toBeInTheDocument();
+    expect(screen.getByText(/Week total/)).toBeInTheDocument();
     expect(screen.getAllByText("1h 30m").length).toBeGreaterThanOrEqual(2);
   });
 
@@ -425,7 +425,7 @@ describe("Habit Tracker", () => {
     const name = screen.getByRole("textbox", { name: "Activity name" });
     expect(name).toHaveFocus();
     expect(name).toHaveValue("Change vase water");
-    expect(screen.queryByRole("heading", { name: "Change vase water" })).not.toBeInTheDocument();
+    expect(name.closest("h1")).toBeInTheDocument();
   });
 
   it("opens a selected date from the activity-log calendar", async () => {
@@ -541,15 +541,15 @@ describe("Habit Tracker", () => {
     noteResponse = { habitId: 1, habitName: "Read", date: "2026-08-26", body: "Finished a chapter", exists: true, archived: false };
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
-    await user.click(screen.getByRole("button", { name: "Notes" }));
-    await user.click(await screen.findByRole("button", { name: /Read/ }));
-    expect(screen.getByRole("dialog", { name: "Read" })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Open Read" }));
+    await user.click(screen.getByRole("button", { name: "Notes for Read" }));
+    expect(await screen.findByRole("dialog", { name: "Notes for Read" })).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: /Finished a chapter/ }));
-    expect(await screen.findByText("Finished a chapter")).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Read" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Finished a chapter", { selector: ".note-detail-body" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Notes for Read" })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Note" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Close note" }));
-    expect(await screen.findByRole("dialog", { name: "Read" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Notes for Read" })).toBeInTheDocument();
   });
 
   it("places database import in the collapsed Backup and restore advanced section", async () => {

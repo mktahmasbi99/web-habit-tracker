@@ -17,7 +17,7 @@ import { InstallAppPanel, type PwaInstallState } from "./components/PwaControls"
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { liveTimer, primeTimerAlerts, useTimedActivityTimers } from "./hooks/useTimedActivityTimers";
 import { api, ApiError } from "./lib/api";
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitSummary, NoteDetail, Status, Streak, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityTimer, TimedActivityWeek, TimedEntry, TimerMode, Unresolved } from "./lib/types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitSummary, NoteDetail, Status, Streak, SystemNotification, Theme, TimedActivityDay, TimedActivitySummary, TimedActivityTimer, TimedActivityWeek, TimedEntry, TimerMode, Unresolved } from "./lib/types";
 
 type Tab = "today" | "manage" | "notifications" | "more";
 type NoteTarget = { habitId: number; habitName: string; date: string; create: boolean; archived?: boolean; kind?: "daily" | "timed" | "log" };
@@ -276,34 +276,6 @@ function AddHabit({ defaultDate, onClose, onSave }: { defaultDate: string; onClo
     <label>Start date<input type="date" value={date} onChange={event => setDate(event.target.value)} /></label>
     <button className="form-submit" disabled={!name.trim() || saving}>{saving ? "Adding…" : kind === "timed" ? "Add timed activity" : kind === "log" ? "Add activity log" : "Add habit"}</button>
   </form></Modal>;
-}
-
-function NotesPage({ refresh, reportError, openNote, noteOpen }: { refresh: number; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void; noteOpen: boolean }) {
-  const [timed, setTimed] = useState<TimedActivitySummary[]>([]); const [logs, setLogs] = useState<ActivityLogSummary[]>([]); const [showArchived, setShowArchived] = useState(false); const [selectedTimed, setSelectedTimed] = useState<TimedActivitySummary | null>(null); const [selectedLog, setSelectedLog] = useState<ActivityLogSummary | null>(null); const [timedOpen, setTimedOpen] = useState(() => { try { return window.localStorage?.getItem?.("notes-timed-open") === "true"; } catch { return false; } }); const [logsOpen, setLogsOpen] = useState(false);
-  const load = useCallback(() => Promise.all([api.timedNoteSummaries(), api.activityLogSummaries()]).then(([timedItems, logItems]) => { setTimed(timedItems); setLogs(logItems); }).catch(reportError), [reportError]);
-  useEffect(() => { void load(); }, [refresh, load]);
-  const visibleTimed = timed.filter(item => !item.archived || showArchived);
-  const visibleLogs = logs.filter(item => !item.archived || showArchived);
-  const toggleTimedNotes = (open: boolean) => { setTimedOpen(open); try { window.localStorage?.setItem?.("notes-timed-open", String(open)); } catch { /* optional preference */ } };
-  return <section className="page list-page"><h1>Notes</h1>
-    <div className="settings-group notes-category-group"><button className="disclosure-row" type="button" aria-expanded={timedOpen} onClick={() => toggleTimedNotes(!timedOpen)}><ChevronRight aria-hidden="true" />Timed activities ({timed.reduce((sum, item) => sum + item.noteCount, 0)})</button>{timedOpen && (visibleTimed.length ? <div className="management-list">{visibleTimed.map(item => <button className={`list-row ${item.archived ? "archived" : ""}`} key={item.id} onClick={() => setSelectedTimed(item)}><span><strong>{item.name}</strong><small>{item.noteCount} {item.noteCount === 1 ? "note" : "notes"}{item.archived ? " · Archived" : ""}</small></span><ChevronRight /></button>)}</div> : <p className="management-empty">No timed activities.</p>)}</div>
-    <div className="settings-group notes-category-group"><button className="disclosure-row" type="button" aria-expanded={logsOpen} onClick={() => setLogsOpen(value => !value)}><ChevronRight aria-hidden="true" />Activity log ({logs.reduce((sum, item) => sum + item.noteCount, 0)})</button>{logsOpen && (visibleLogs.length ? <div className="management-list">{visibleLogs.map(item => <button className={`list-row ${item.archived ? "archived" : ""}`} key={item.id} onClick={() => setSelectedLog(item)}><span><strong>{item.name}</strong><small>{item.noteCount} {item.noteCount === 1 ? "note" : "notes"}{item.archived ? " · Archived" : ""}</small></span><ChevronRight /></button>)}</div> : <p className="management-empty">No activity log items.</p>)}</div>
-    {(timed.some(item => item.archived) || logs.some(item => item.archived)) && <button className="text-button" onClick={() => setShowArchived(value => !value)}>{showArchived ? "Hide Archived Activities" : "View Archived Activities"}</button>}
-    {selectedTimed && !noteOpen && <TimedNoteHistory summary={selectedTimed} onClose={() => setSelectedTimed(null)} reportError={reportError} openNote={openNote} />}
-    {selectedLog && !noteOpen && <ActivityLogNoteHistory summary={selectedLog} onClose={() => setSelectedLog(null)} reportError={reportError} openNote={openNote} />}
-  </section>;
-}
-
-function ActivityLogNoteHistory({ summary, onClose, reportError, openNote }: { summary: ActivityLogSummary; onClose: () => void; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void }) {
-  const [notes, setNotes] = useState<ActivityLogNote[]>([]);
-  useEffect(() => { void api.activityLogNotes(summary.id).then(setNotes).catch(reportError); }, [summary.id, reportError]);
-  return <Modal title={summary.name} wide onClose={onClose}>{notes.length ? <div className="note-history">{notes.map(note => <button key={note.date} onClick={() => openNote({ habitId: summary.id, habitName: summary.name, date: note.date, create: false, archived: summary.archived, kind: "log" })}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <EmptyState icon={<StickyNote />} title="No notes yet" detail="Add notes from the activity calendar." />}</Modal>;
-}
-
-function TimedNoteHistory({ summary, onClose, reportError, openNote }: { summary: TimedActivitySummary; onClose: () => void; reportError: (error: unknown) => void; openNote: (target: NoteTarget) => void }) {
-  const [notes, setNotes] = useState<TimedActivityNote[]>([]);
-  useEffect(() => { void api.timedActivityNotes(summary.id).then(setNotes).catch(reportError); }, [summary.id, reportError]);
-  return <Modal title={summary.name} wide onClose={onClose}>{notes.length ? <div className="note-history">{notes.map(note => <button key={note.date} onClick={() => openNote({ habitId: summary.id, habitName: summary.name, date: note.date, create: false, archived: summary.archived, kind: "timed" })}><strong>{prettyDate(note.date)}</strong><p>{note.body}</p></button>)}</div> : <EmptyState icon={<StickyNote />} title="No notes yet" detail="Add notes from the activity’s daily logging sheet." />}</Modal>;
 }
 
 function NotificationsPage({ items, systemItems, reportError, openDate, onDataChange }: { items: Unresolved[]; systemItems: SystemNotification[]; reportError: (error: unknown) => void; openDate: (date: string) => void; onDataChange: () => void }) {
