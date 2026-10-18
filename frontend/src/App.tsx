@@ -1,6 +1,6 @@
 import {
   Archive, Bell, BellOff, ChevronLeft, ChevronRight,
-  CircleCheck, CircleEllipsis, Clock3, Download, FileUp, Flame, MoreHorizontal, NotebookPen, Pencil, Plus, Save, StickyNote, Trash2, X,
+  CircleCheck, CircleEllipsis, Clock3, Download, FileUp, Flame, MoreHorizontal, NotebookPen, Pencil, Plus, Save, StickyNote, Trash2, X, Hourglass, AlarmClock, PenLine,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
@@ -34,6 +34,9 @@ const relativeCompletion = (value: string | null, today: string) => {
   return `${prettyDate(value)} · ${days} days ago`;
 };
 const statusLabels: Record<Status, string> = { pending: "Pending", done: "Done", missed: "Missed" };
+function TomatoIcon() {
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 8.1c-1.7-1.1-4-1.2-5.9-.3-2.4 1.1-3.8 3.5-3.5 6.2.4 3.4 3.4 6 7.2 6h4.4c3.8 0 6.8-2.6 7.2-6 .3-2.7-1.1-5.1-3.5-6.2-1.9-.9-4.2-.8-5.9.3Z"/><path d="M12 8c-.1-1.4-.7-2.6-1.8-3.4 1.9-.2 3.1.4 3.8 1.7.8-1.3 2.2-1.8 4-1.6-1.1 1.1-1.7 2.2-1.8 3.5M12 8c-1.4-1.5-3.1-1.8-5.1-1.3 1 1.5 2.5 2.4 4.7 2.5M12 8c1.4-1.5 3.1-1.8 5.1-1.3"/></svg>;
+}
 const timedSectionPreference = () => {
   try { return typeof window.localStorage?.getItem === "function" ? window.localStorage.getItem("timed-activities-open") !== "false" : true; } catch { return true; }
 };

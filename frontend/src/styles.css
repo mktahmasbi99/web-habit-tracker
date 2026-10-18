@@ -222,3 +222,12 @@ input, textarea, select { scroll-margin-block: 80px; }
 
 .note-detail-portal { position: fixed; z-index: 40; inset: 0; }
 .streak-more { width: 100%; min-height: 44px; margin-top: 8px; border: 0; border-radius: 10px; background: var(--soft-fill); color: var(--accent); font-weight: 650; cursor: pointer; }
+.timer-mode-picker label { min-height: 66px; justify-content: flex-start; gap: 11px; padding: 10px 12px; text-align: left; transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.timer-mode-picker label:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--separator)); }
+.timer-mode-picker label.selected { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
+.timer-mode-icon { display: grid; width: 36px; height: 36px; flex: none; place-items: center; border-radius: 11px; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); }
+.timer-mode-icon svg { width: 19px; height: 19px; }
+.timer-mode-copy { display: grid; gap: 3px; }
+.timer-mode-copy strong { color: var(--label); font-size: .88rem; }
+.timer-mode-copy small { color: var(--secondary); font-size: .68rem; line-height: 1.25; }
+@media (prefers-reduced-motion: reduce) { .timer-mode-picker label { transition: none; } }
