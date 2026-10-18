@@ -13,6 +13,7 @@ The interface is mobile-first and keeps the iPhone app's visual language: system
 - Pending, Done, and Missed status controls
 - Per-habit monthly status calendars with green Done, red Missed, and orange Pending markers through today, refreshed immediately after a start-date edit
 - Expandable Timed activities with manual duration entry plus server-backed, concurrent Pomodoro, countdown, and stopwatch timers on Today; timers survive client and server restarts, split completed time across local midnight, and feed the existing editable entries, daily totals, and weekly history
+- Timed activity details show a time chart with weekly, monthly, six-month, yearly, all-time, and custom date ranges, alongside the selected day's total and the chosen period's total
 - Expandable Activity log for observational records such as maintenance and care: each item shows when it was last done, has a monthly completion calendar, and supports notes on completed or uncompleted dates without streaks, schedules, or reminders
 - Current streaks beside each daily habit, plus current, longest, and historical streak statistics in each habit sheet
 - Per-habit, per-day notes with full-screen read, edit, and delete controls, direct note URLs, plus a notes index and history; press Ctrl+Enter or Cmd+Enter while editing to save and exit

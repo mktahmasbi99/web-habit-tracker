@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 import { lockScroll } from "../hooks/scrollLock";
 import { useSheetHistory } from "../hooks/useSheetHistory";
 
-export default function Modal({ title, titleDetail, titleEditor, children, onClose, wide = false, actions }: {
-  title: string; titleDetail?: ReactNode; titleEditor?: ReactNode; children: ReactNode; onClose: () => void; wide?: boolean; actions?: ReactNode;
+export default function Modal({ title, titleDetail, titleEditor, children, onClose, wide = false, fullPage = false, actions }: {
+  title: string; titleDetail?: ReactNode; titleEditor?: ReactNode; children: ReactNode; onClose: () => void; wide?: boolean; fullPage?: boolean; actions?: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
@@ -36,7 +36,7 @@ export default function Modal({ title, titleDetail, titleEditor, children, onClo
       if (trigger?.isConnected) trigger.focus();
     };
   }, []);
-  return createPortal(<dialog ref={dialog} className={`modal-backdrop ${wide ? "modal-backdrop-wide" : ""}`} aria-label={title}
+  return createPortal(<dialog ref={dialog} className={`modal-backdrop ${wide ? "modal-backdrop-wide" : ""} ${fullPage ? "modal-backdrop-full-page" : ""}`} aria-label={title}
     onKeyDown={event => {
       if (event.key !== "Tab") return;
       const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')).filter(item => item.getClientRects().length > 0);
@@ -46,7 +46,7 @@ export default function Modal({ title, titleDetail, titleEditor, children, onClo
     }}
     onCancel={event => { event.preventDefault(); onClose(); }}
     onClick={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={`modal ${wide ? "modal-wide" : ""}`}>
+    <section className={`modal ${wide ? "modal-wide" : ""} ${fullPage ? "modal-full-page" : ""}`}>
       <header className="modal-head"><h2>{titleEditor ?? <>{title}{titleDetail}</>}</h2><div className="modal-head-actions">{actions}<button className="icon-button" onClick={onClose} aria-label="Close"><X /></button></div></header>
       <div className="modal-body">{error && <div className="inline-error" role="alert"><span>{error}</span><button className="small-button" onClick={() => setError("")}>Dismiss error</button></div>}{children}</div>
     </section>

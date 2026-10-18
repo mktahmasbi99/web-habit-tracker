@@ -1,4 +1,4 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivitySummary, TimedActivityTimer, TimedActivityTimers, TimedActivityWeek, TimerMode, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivityStatistics, TimedActivitySummary, TimedActivityTimer, TimedActivityTimers, TimedActivityWeek, TimerMode, Unresolved } from "./types";
 
 export class ApiError extends Error {
   constructor(message: string, public status?: number, public data?: unknown) { super(message); }
@@ -69,6 +69,7 @@ export const api = {
   restoreTimedActivity: (id: number) => request<TimedActivitySummary>(`/api/timed-activities/${id}/restore`, { method: "POST" }),
   deleteTimedActivity: (id: number, confirmation: string) => request<{ status: string; backup: string }>(`/api/timed-activities/${id}`, json("DELETE", { confirmation })),
   timedWeek: (id: number, day: string) => request<TimedActivityWeek>(`/api/timed-activities/${id}/weeks/${day}`),
+  timedStatistics: (id: number, start: string, end: string) => request<TimedActivityStatistics>(`/api/timed-activities/${id}/statistics?start=${start}&end=${end}`),
   timers: () => request<TimedActivityTimers>("/api/timed-activity-timers"),
   startTimer: (id: number, mode: TimerMode, targetMinutes?: number, intervalEnabled?: boolean, intervalMinutes?: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer`, json("POST", { mode, targetMinutes, intervalEnabled, intervalMinutes })),
   pauseTimer: (id: number, revision: number) => request<TimedActivityTimer>(`/api/timed-activities/${id}/timer/pause`, json("POST", { revision })),

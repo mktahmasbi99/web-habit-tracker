@@ -14,6 +14,7 @@ export interface TimedWeekDay { date: string; minutes: number; entries: TimedEnt
 export interface TimedActivityWeek {
   id: number; name: string; startDate: string; selectedDate: string; days: TimedWeekDay[]; note: string;
 }
+export interface TimedActivityStatistics { startDate: string; endDate: string; days: Array<{ date: string; minutes: number }> }
 export interface TimedActivitySummary {
   id: number; name: string; startDate: string; archived: boolean; archivedAt: string | null; noteCount: number;
 }

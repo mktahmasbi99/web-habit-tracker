@@ -6,6 +6,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add selectable weekly, monthly, six-month, yearly, all-time, and custom timed-activity charts with period totals, while retaining the selected day's total.
+
 - Keep timed-session mode radio hit targets contained within their labels so adjacent controls cannot intercept taps on narrow screens.
 
 - Preview a countdown's end time while setting its duration, including tomorrow/date context after midnight, and warn when its portion of today would exceed the timed activity's remaining daily quota.

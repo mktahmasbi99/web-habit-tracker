@@ -648,6 +648,25 @@ class HabitDatabase:
             current += timedelta(days=1)
         return {"id": activity_id, "name": activity["name"], "startDate": activity["start_date"], "selectedDate": selected.isoformat(), "days": days, "note": note["body"] if note else ""}
 
+    def timed_activity_statistics(self, activity_id: int, start_value: str, end_value: str) -> dict:
+        start = self.parse_day(start_value)
+        end = self.parse_day(end_value)
+        if end < start:
+            raise DomainError("The end date must be on or after the start date.")
+        with self.connect() as connection:
+            activity = self._timed_row(connection, activity_id)
+            rows = connection.execute(
+                """SELECT entry_date, SUM(minutes) AS minutes FROM timed_activity_entries
+                   WHERE activity_id = ? AND entry_date BETWEEN ? AND ?
+                   GROUP BY entry_date ORDER BY entry_date""",
+                (activity_id, start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return {
+            "startDate": start.isoformat(),
+            "endDate": end.isoformat(),
+            "days": [{"date": row["entry_date"], "minutes": row["minutes"]} for row in rows],
+        }
+
     @staticmethod
     def _instant(value: str) -> datetime:
         parsed = datetime.fromisoformat(value)

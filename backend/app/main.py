@@ -171,6 +171,11 @@ def timed_activity_week(activity_id: int, day: str) -> dict:
     return database.timed_activity_week(activity_id, day)
 
 
+@app.get("/api/timed-activities/{activity_id}/statistics")
+def timed_activity_statistics(activity_id: int, start: str, end: str) -> dict:
+    return database.timed_activity_statistics(activity_id, start, end)
+
+
 @app.get("/api/timed-activity-timers")
 def timed_activity_timers() -> dict:
     return database.timer_states()
