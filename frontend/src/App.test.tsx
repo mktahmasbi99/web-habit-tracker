@@ -124,7 +124,7 @@ describe("Habit Tracker", () => {
     todayHabitStreak = 4;
     const user = userEvent.setup(); render(<App />);
     await screen.findByRole("heading", { name: "Today" });
-    const missed = screen.getByRole("button", { name: "Missed" });
+    const missed = await screen.findByRole("button", { name: "Missed" });
     await user.click(missed);
     const card = (await screen.findByText("Streak broken · 0")).closest("article")!;
     expect(card).toHaveClass("streak-broken", "streak-broken-reacting");

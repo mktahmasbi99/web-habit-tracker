@@ -241,6 +241,7 @@ def test_timed_activity_sessions_week_totals_notes_and_limits(monkeypatch, tmp_p
     monkeypatch.setenv("WEB_HABIT_TRACKER_DB", str(tmp_path / "timed.sqlite3"))
     import app.main
     module = importlib.reload(app.main)
+    monkeypatch.setattr(module.database, "today", lambda: date(2026, 10, 20))
     with TestClient(module.app) as client:
         today = date.fromisoformat(client.get("/api/config").json()["today"])
         monday = today - timedelta(days=today.weekday())
