@@ -49,7 +49,13 @@ h1 { margin-bottom: 22px; font-size: clamp(2rem, 5vw, 2.55rem); line-height: 1.0
 .primary-action { display: flex; justify-content: flex-end; margin: 18px 0 14px; }
 .add-button { display: grid; width: 48px; height: 48px; padding: 0; place-items: center; border: 0; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 30%, transparent); cursor: pointer; }
 .habit-list { display: grid; gap: 12px; }
-.habit-card { padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: 0 2px 12px var(--shadow); }
+.habit-card { position: relative; padding: 16px; border-radius: 22px; background: var(--surface); box-shadow: 0 2px 12px var(--shadow); }
+.habit-card.streak-broken { background: color-mix(in srgb, var(--surface) 58%, var(--background)); filter: saturate(.28); transition: background-color .3s ease, filter .3s ease; }
+.streak-broken .habit-card-head span.streak-broken-label { color: var(--secondary); font-weight: 700; }
+.streak-sad-reaction { position: absolute; z-index: 2; top: 50%; left: 50%; pointer-events: none; font-size: clamp(3.5rem, 14vw, 5.5rem); line-height: 1; transform: translate(-50%, -50%); animation: streak-sad-drop 1.25s ease-out both; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+@keyframes streak-sad-drop { 0% { opacity: 0; transform: translate(-50%, -35%) scale(.35) rotate(-12deg); } 22% { opacity: 1; transform: translate(-50%, -55%) scale(1.22) rotate(5deg); } 42% { transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -38%) scale(.8); } }
+@media (prefers-reduced-motion: reduce) { .habit-card.streak-broken { transition: none; }.streak-sad-reaction { animation: none; opacity: 1; } }
 .habit-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }.habit-card-head h2 { margin: 0; font-size: 1.05rem; }.habit-card-head span { display: inline-flex; flex: none; align-items: center; gap: 3px; color: var(--secondary); font-size: .78rem; }
 .habit-card-head span.streak-record { color: #ff8a24; font-weight: 750; }.habit-card-head span.streak-record svg { fill: #ff8a24; stroke: #ff5a24; }
 .habit-card-head span.streak-record-celebrating { animation: streak-record-burst .8s ease-out; }

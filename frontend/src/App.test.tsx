@@ -12,6 +12,8 @@ let noteSummaries: unknown[];
 let habitNotes: unknown[];
 let habitName: string;
 let habitStartDate: string;
+let todayHabitStatus: "pending" | "done" | "missed";
+let todayHabitStreak: number;
 let habitStreaks: Array<{ startDate: string; endDate: string; length: number }>;
 let includeSecondDailyHabit: boolean;
 let timedActivities: unknown[];
@@ -30,6 +32,8 @@ describe("Habit Tracker", () => {
     habitNotes = [];
     habitName = "Read";
     habitStartDate = "2026-08-26";
+    todayHabitStatus = "pending";
+    todayHabitStreak = 0;
     habitStreaks = [];
     includeSecondDailyHabit = false;
     timedActivities = [];
@@ -90,8 +94,9 @@ describe("Habit Tracker", () => {
       }
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/activity-logs$/.test(url)) return ok(activityLogs);
       if (/^\/api\/days\/\d{4}-\d{2}-\d{2}\/timed-activities$/.test(url)) return ok(timedActivities);
-      if (url.includes("/api/days/") && url.endsWith("/habits")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }, ...(includeSecondDailyHabit ? [{ id: 3, name: "Write", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: false }] : [])]);
-      if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
+      if (/^\/api\/habits\/1\/days\/\d{4}-\d{2}-\d{2}\/status$/.test(url) && init?.method === "PUT") { todayHabitStatus = (JSON.parse(String(init.body)) as { status: typeof todayHabitStatus }).status; return ok(undefined, 204); }
+      if (url.includes("/api/days/") && url.endsWith("/habits")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: todayHabitStatus, currentStreak: todayHabitStreak, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }, ...(includeSecondDailyHabit ? [{ id: 3, name: "Write", startDate: "2026-08-26", status: "pending", currentStreak: 0, hasNote: false }] : [])]);
+      if (url.includes("/api/days/")) return ok([{ id: 1, name: habitName, startDate: "2026-08-26", status: todayHabitStatus, currentStreak: todayHabitStreak, hasNote: Boolean((noteResponse as { exists?: boolean }).exists) }]);
       if (url === "/api/notes") return ok(noteSummaries);
       if (url === "/api/habits/1/notes") return ok(habitNotes);
       return ok({}, 204);
@@ -113,6 +118,36 @@ describe("Habit Tracker", () => {
       expect(button).not.toHaveTextContent(name);
     }
     expect(await navigation.findByRole("button", { name: "Notifications, 1 unresolved dates" })).toHaveTextContent("1");
+  });
+
+  it("shows a sad reaction and a persistent broken streak for a missed habit today", async () => {
+    todayHabitStreak = 4;
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    const missed = screen.getByRole("button", { name: "Missed" });
+    await user.click(missed);
+    const card = (await screen.findByText("Streak broken · 0")).closest("article")!;
+    expect(card).toHaveClass("streak-broken", "streak-broken-reacting");
+    expect(await screen.findByText("😢")).toBeInTheDocument();
+    expect(screen.getByText("Read: streak broken, 0 days")).toBeInTheDocument();
+    await waitFor(() => expect(card).not.toHaveClass("streak-broken-reacting"), { timeout: 1800 });
+    expect(card).toHaveClass("streak-broken");
+    expect(screen.queryByText("4 streak")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Pending" }));
+    await waitFor(() => expect(screen.queryByText("Streak broken · 0")).not.toBeInTheDocument());
+    expect(screen.getByText("4 streak")).toBeInTheDocument();
+  });
+
+  it("keeps the broken streak state after reloading Today and does not apply it to historical days", async () => {
+    todayHabitStatus = "missed";
+    todayHabitStreak = 4;
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    expect(await screen.findByText("Streak broken · 0")).toBeInTheDocument();
+    expect(screen.queryByText("😢")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    await screen.findByRole("heading", { name: "Yesterday" });
+    expect(screen.queryByText("Streak broken · 0")).not.toBeInTheDocument();
   });
 
   it("enters daily habit rearranging mode after a long press", async () => {

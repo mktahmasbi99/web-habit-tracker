@@ -114,6 +114,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const writes = useRef(new Set<string>());
   const [pendingWrites, setPendingWrites] = useState(new Set<string>());
   const [celebratingRecords, setCelebratingRecords] = useState(new Set<number>());
+  const [reactingToMissed, setReactingToMissed] = useState(new Set<number>());
   const [calendar, setCalendar] = useState(false);
   const [adding, setAdding] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(() => { try { return window.localStorage?.getItem?.("daily-habits-open") !== "false"; } catch { return true; } });
@@ -124,6 +125,11 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
   const [activityLogWrites, setActivityLogWrites] = useState(new Set<number>());
   const [reorderMode, setReorderMode] = useState<"daily" | "timed" | "log" | null>(null);
   const holdTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (!reactingToMissed.size) return;
+    const timeout = window.setTimeout(() => setReactingToMissed(new Set()), 1250);
+    return () => window.clearTimeout(timeout);
+  }, [reactingToMissed]);
   const suppressTimer = useRef<number | null>(null);
   const suppressCardClick = useRef(false);
   const suppressedTarget = useRef<EventTarget | null>(null);
@@ -234,6 +240,12 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     writes.current.add(key); setPendingWrites(new Set(writes.current));
     try {
       await api.setStatus(habit.id, selectedDate, status);
+      setReactingToMissed(current => {
+        const next = new Set(current);
+        next.delete(habit.id);
+        if (status === "missed" && selectedDate === config.today && habit.status !== "missed") next.add(habit.id);
+        return next;
+      });
       const updatedHabits = await load();
       if (status === "done" && habit.status !== "done" && updatedHabits?.find(item => item.id === habit.id)?.recordStreak) {
         setCelebratingRecords(current => new Set(current).add(habit.id));
@@ -261,8 +273,13 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
     <section className="timed-section daily-section">
       <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={dailyOpen} aria-controls="daily-habit-list" onClick={() => { const next = !dailyOpen; setDailyOpen(next); try { window.localStorage?.setItem?.("daily-habits-open", String(next)); } catch { /* optional preference */ } }}><ChevronRight aria-hidden="true" /><span><strong>Daily habits</strong><small>Complete once each day</small></span></button></div>
       {reorderMode === "daily" && <div className="reorder-toolbar" role="status"><span>Rearranging daily habits · drag cards to reorder</span><button type="button" onClick={() => setReorderMode(null)}>Done</button></div>}
-      {dailyOpen && <div id="daily-habit-list">{visibleHabits.length === 0 ? <p className="timed-empty">No daily habits on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "daily" ? "reorder-list" : ""}`}>{visibleHabits.map(habit => <article className={`habit-card ${reorderMode === "daily" ? "reorder-card" : ""}`} key={habit.id} aria-busy={pendingWrites.has(`${selectedDate}:${habit.id}`)} {...holdProps("daily")} {...dragProps("daily", habit.id)}>
-        <button className="habit-card-open habit-card-head" onClick={() => openHabit?.(habit.id)} aria-label={`Open ${habit.name}`}><h2>{habit.name}</h2><span className={habit.recordStreak ? `streak-record${celebratingRecords.has(habit.id) ? " streak-record-celebrating" : ""}` : ""} onAnimationEnd={() => setCelebratingRecords(current => { const next = new Set(current); next.delete(habit.id); return next; })}><Flame size={14} aria-hidden="true" /> {habit.currentStreak} streak</span></button>
+      {dailyOpen && <div id="daily-habit-list">{visibleHabits.length === 0 ? <p className="timed-empty">No daily habits on this date.</p> : <div className={`habit-list timed-list ${reorderMode === "daily" ? "reorder-list" : ""}`}>{visibleHabits.map(habit => {
+        const brokenToday = selectedDate === config.today && habit.status === "missed";
+        const reacting = brokenToday && reactingToMissed.has(habit.id);
+        return <article className={`habit-card ${brokenToday ? "streak-broken" : ""} ${reacting ? "streak-broken-reacting" : ""} ${reorderMode === "daily" ? "reorder-card" : ""}`} key={habit.id} aria-busy={pendingWrites.has(`${selectedDate}:${habit.id}`)} {...holdProps("daily")} {...dragProps("daily", habit.id)}>
+        {reacting && <span className="streak-sad-reaction" aria-hidden="true">😢</span>}
+        <span className="sr-only" aria-live="polite">{brokenToday ? `${habit.name}: streak broken, 0 days` : ""}</span>
+        <button className="habit-card-open habit-card-head" onClick={() => openHabit?.(habit.id)} aria-label={`Open ${habit.name}`}><h2>{habit.name}</h2>{brokenToday ? <span className="streak-broken-label">Streak broken · 0</span> : <span className={habit.recordStreak ? `streak-record${celebratingRecords.has(habit.id) ? " streak-record-celebrating" : ""}` : ""} onAnimationEnd={() => setCelebratingRecords(current => { const next = new Set(current); next.delete(habit.id); return next; })}><Flame size={14} aria-hidden="true" /> {habit.currentStreak} streak</span>}</button>
         {pendingWrites.has(`${selectedDate}:${habit.id}`) && <small role="status">Saving…</small>}
         <div className="habit-actions">
           <div className="status-group">{(["pending", "done", "missed"] as Status[]).map(status =>
@@ -270,7 +287,7 @@ function TodayPage({ config, selectedDate, refresh, onDate, onDataChange, report
           )}</div>
           <button className={`note-button ${habit.hasNote ? "has-note" : ""}`} onClick={() => openNote({ habitId: habit.id, habitName: habit.name, date: selectedDate, create: !habit.hasNote })} aria-label={`${habit.hasNote ? "View" : "Add"} note for ${habit.name}`}><StickyNote /></button>
         </div>
-      </article>)}</div>}</div>}
+      </article>})}</div>}</div>}
     </section></>}
     {!loading && !loadError && loadedDate === selectedDate && <section className="timed-section">
       <div className="today-section-tools"><button className="timed-section-head disclosure-row" type="button" aria-expanded={timedOpen} aria-controls="timed-activity-list" onClick={() => { const next = !timedOpen; setTimedOpen(next); saveTimedSectionPreference(next); }}><ChevronRight aria-hidden="true" /><span><strong>Timed activities</strong><small>Optional time tracking</small></span></button></div>
