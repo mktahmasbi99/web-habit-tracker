@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 
@@ -61,18 +61,18 @@ class HabitDatabase:
 
     @contextmanager
     def connect(self, path: Path | None = None) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(path or self.path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        if path is None or path == self.path:
-            connection.execute("PRAGMA journal_mode = WAL")
-        else:
-            connection.execute("PRAGMA journal_mode = DELETE")
-        try:
-            yield connection
-        finally:
-            connection.close()
+        live = path is None or path == self.path
+        # Replacement must wait for live connections to close, including their WAL files.
+        with self._replacement_lock if live else nullcontext():
+            connection = sqlite3.connect(path or self.path, timeout=5)
+            try:
+                connection.row_factory = sqlite3.Row
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("PRAGMA busy_timeout = 5000")
+                connection.execute(f"PRAGMA journal_mode = {'WAL' if live else 'DELETE'}")
+                yield connection
+            finally:
+                connection.close()
 
     def migrate(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -942,6 +942,8 @@ class HabitDatabase:
         portions = self._split_timer_minutes([(current, deadline)], target) if deadline else {}
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if self._timed_row(connection, activity_id)["archived_at"] is not None:
+                raise DomainError("Restore this timed activity before starting a timer.")
             if not self._timed_active(connection, activity_id, today):
                 raise DomainError("This timed activity is not active today.")
             if connection.execute(
@@ -1231,6 +1233,7 @@ class HabitDatabase:
         if not 1 <= minutes <= 1440:
             raise DomainError("Duration must be between 1 minute and 24 hours.")
         with self.connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             if not self._timed_active(connection, activity_id, day):
                 raise DomainError("This timed activity was not active on the selected date.")
             if connection.execute(
@@ -1253,6 +1256,7 @@ class HabitDatabase:
         if not 1 <= minutes <= 1440:
             raise DomainError("Duration must be between 1 minute and 24 hours.")
         with self.connect() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT entry_date, minutes FROM timed_activity_entries WHERE id = ? AND activity_id = ?",
                 (entry_id, activity_id),
@@ -2022,6 +2026,41 @@ class HabitDatabase:
                     columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
                     if not expected.issubset(columns):
                         raise ImportValidationError(f"The {table} table is missing required columns.")
+                date_columns = {
+                    "habits": ("start_date", "completed_at", "archived_at"),
+                    "habit_logs": ("log_date",),
+                    "habit_notes": ("note_date",),
+                    "habit_challenges": ("start_date", "end_date", "completed_at"),
+                    "habit_archive_periods": ("archived_at", "resurrected_at"),
+                    "timed_activities": ("start_date", "archived_at"),
+                    "timed_activity_entries": ("entry_date",),
+                    "timed_activity_notes": ("note_date",),
+                    "timed_activity_archive_periods": ("archived_at", "resurrected_at"),
+                    "activity_logs": ("start_date", "archived_at"),
+                    "activity_log_completions": ("completion_date",),
+                    "activity_log_notes": ("note_date",),
+                    "activity_log_archive_periods": ("archived_at", "resurrected_at"),
+                }
+                for table, candidates in date_columns.items():
+                    if table not in tables:
+                        continue
+                    columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+                    for column in columns.intersection(candidates):
+                        for row in connection.execute(f"SELECT {column} FROM {table}"):
+                            value = row[0]
+                            if value is None and column in {"completed_at", "resurrected_at"}:
+                                continue
+                            if value is None and column == "archived_at" and table in {
+                                "habits", "timed_activities", "activity_logs"
+                            }:
+                                continue
+                            try:
+                                if date.fromisoformat(value).isoformat() != value:
+                                    raise ValueError
+                            except (TypeError, ValueError) as exc:
+                                raise ImportValidationError(
+                                    f"The {table}.{column} column contains an invalid date."
+                                ) from exc
         except sqlite3.DatabaseError as exc:
             raise ImportValidationError("The selected file is not a valid SQLite database.") from exc
 
@@ -2292,13 +2331,14 @@ class HabitDatabase:
                 if row["last_scheduled_date"] >= due.isoformat():
                     connection.rollback()
                     continue
-                connection.execute("UPDATE web_backup_runs SET last_scheduled_date = ? WHERE backup_type = ?", (due.isoformat(), category))
-                connection.commit()
-            try:
-                self.create_backup(category)
-            except (DomainError, OSError, sqlite3.Error) as exc:
-                self._record_backup_failure(category, exc)
-                continue
+                connection.rollback()
+                try:
+                    self.create_backup(category)
+                    connection.execute("UPDATE web_backup_runs SET last_scheduled_date = ? WHERE backup_type = ?", (due.isoformat(), category))
+                    connection.commit()
+                except (DomainError, OSError, sqlite3.Error) as exc:
+                    connection.rollback()
+                    self._record_backup_failure(category, exc)
 
     def import_database(self, upload: bytes, confirmation: str) -> str:
         if confirmation != "IMPORT":

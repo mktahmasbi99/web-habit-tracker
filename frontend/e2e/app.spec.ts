@@ -114,3 +114,27 @@ test("renames, archives, restores, and safely deletes a habit", async ({ page })
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: renamed })).toBeHidden();
 });
+
+test("keeps time charts current while entries are added, edited, and deleted", async ({ page, request }) => {
+  const { today } = await (await request.get("/api/config")).json();
+  const name = `Chart ${Date.now()}`;
+  const { id } = await (await request.post("/api/timed-activities", { data: { name, startDate: today } })).json();
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: `Open ${name}` }).click();
+    const periodTotal = page.locator(".timed-selected-head > div").last().locator("strong");
+    await expect(periodTotal).toHaveText("0m");
+    await page.getByRole("spinbutton", { name: "Minutes", exact: true }).fill("10");
+    await page.getByRole("button", { name: "Add entry", exact: true }).click();
+    await expect(periodTotal).toHaveText("10m");
+    await page.getByRole("button", { name: "Edit 10m entry" }).click();
+    const row = page.locator(".timed-entry-row");
+    await row.getByRole("spinbutton", { name: "Minutes" }).fill("20");
+    await row.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(periodTotal).toHaveText("20m");
+    await page.getByRole("button", { name: "Delete 20m entry" }).click();
+    await expect(periodTotal).toHaveText("0m");
+  } finally {
+    await request.delete(`/api/timed-activities/${id}`, { data: { confirmation: "DELETE" } });
+  }
+});

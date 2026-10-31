@@ -20,8 +20,8 @@ function rangeFor(period: Period, selected: string, startDate: string, customSta
   return { start: customStart, end: customEnd };
 }
 
-export default function TimedStatistics({ activityId, activityStart, selectedDate, selectedMinutes, reportError }: {
-  activityId: number; activityStart: string; selectedDate: string; selectedMinutes: number; reportError: (error: unknown) => void;
+export default function TimedStatistics({ activityId, activityStart, selectedDate, selectedMinutes, refreshKey, reportError }: {
+  activityId: number; activityStart: string; selectedDate: string; selectedMinutes: number; refreshKey: number; reportError: (error: unknown) => void;
 }) {
   const [period, setPeriod] = useState<Period>("week");
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
@@ -29,13 +29,14 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
   const [customStart, setCustomStart] = useState(() => moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6));
   const [customEnd, setCustomEnd] = useState(selectedDate);
   const range = rangeFor(period, selectedDate, activityStart, customStart, customEnd);
+  if (period !== "custom" && range.start < activityStart) range.start = activityStart;
   const [data, setData] = useState<StatisticsData | null>(null);
   useEffect(() => {
     let active = true;
     if (range.start > range.end || range.start < activityStart || range.end > selectedDate) { setData(null); return () => { active = false; }; }
     void api.timedStatistics(activityId, range.start, range.end).then(result => { if (active) setData(result); }).catch(error => { if (active) reportError(error); });
     return () => { active = false; };
-  }, [activityId, activityStart, selectedDate, range.start, range.end, reportError]);
+  }, [activityId, activityStart, selectedDate, range.start, range.end, refreshKey, reportError]);
 
   const buckets = useMemo(() => {
     const daily = new Map((data?.days ?? []).map(day => [day.date, day.minutes]));

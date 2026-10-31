@@ -103,6 +103,70 @@ describe("Habit Tracker", () => {
     }));
   });
 
+  it("refreshes chart totals after adding, editing, and deleting entries in the open sheet", async () => {
+    const user = userEvent.setup();
+    let entries = [{ id: 100, minutes: 90 }];
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+    const total = () => entries.reduce((sum, entry) => sum + entry.minutes, 0);
+    const updateDay = () => { timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: total(), weekMinutes: total(), hasNote: false, archived: false }]; };
+    updateDay();
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/timed-activities/10/weeks/2026-08-26") return ok({ id: 10, name: "Study", startDate: "2026-08-26", selectedDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: total(), entries, active: true }], note: "" });
+      if (url.includes("/api/timed-activities/10/statistics?")) return ok({ startDate: "2026-08-26", endDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: total() }] });
+      if (url === "/api/timed-activities/10/days/2026-08-26/entries" && init?.method === "POST") {
+        entries = [...entries, { id: 101, minutes: JSON.parse(String(init.body)).minutes }]; updateDay(); return ok(entries[1], 201);
+      }
+      if (url === "/api/timed-activities/10/entries/101") {
+        entries = init?.method === "DELETE" ? entries.filter(entry => entry.id !== 101) : entries.map(entry => entry.id === 101 ? { ...entry, minutes: JSON.parse(String(init?.body)).minutes } : entry);
+        updateDay(); return ok(undefined, 204);
+      }
+      return baseFetch(input, init);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    const periodTotal = () => screen.getByText(/Week total/).parentElement!;
+    await waitFor(() => expect(within(periodTotal()).getByText("1h 30m")).toBeInTheDocument());
+    await user.type(screen.getByRole("spinbutton", { name: "Minutes" }), "10");
+    await user.click(screen.getByRole("button", { name: "Add entry" }));
+    await waitFor(() => expect(within(periodTotal()).getByText("1h 40m")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Edit 10m entry" }));
+    const entry = screen.getByRole("button", { name: "Save" }).closest(".timed-entry-row")! as HTMLElement;
+    await user.clear(within(entry).getByRole("spinbutton", { name: "Minutes" }));
+    await user.type(within(entry).getByRole("spinbutton", { name: "Minutes" }), "20");
+    await user.click(within(entry).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(within(periodTotal()).getByText("1h 50m")).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: "Delete 20m entry" }));
+    await waitFor(() => expect(within(periodTotal()).getByText("1h 30m")).toBeInTheDocument());
+  });
+
+  it("refreshes the open sheet and chart when a countdown completes during polling", async () => {
+    const user = userEvent.setup();
+    let poll: (() => void) | undefined;
+    const startInterval = window.setInterval.bind(window);
+    vi.spyOn(window, "setInterval").mockImplementation((handler, timeout) => {
+      if (timeout === 5_000) poll = handler as () => void;
+      return startInterval(handler, timeout);
+    });
+    timedActivities = [{ id: 10, name: "Study", startDate: "2026-08-26", dayMinutes: 90, weekMinutes: 90, hasNote: false, archived: false }];
+    timerSnapshot.timers = [{ activityId: 10, mode: "countdown", phase: "countdown", status: "running", targetMinutes: 1, elapsedSeconds: 55, remainingSeconds: 5, percent: 91.7, focusNumber: 1, intervalEnabled: false, intervalMinutes: 10, revision: 1 }];
+    const baseFetch = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      if (String(input).includes("/api/timed-activities/10/statistics?")) return ok({ startDate: "2026-08-26", endDate: "2026-08-26", days: [{ date: "2026-08-26", minutes: (timedActivities[0] as { dayMinutes: number }).dayMinutes }] });
+      return baseFetch(input, init);
+    });
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Study" }));
+    const periodTotal = () => screen.getByText(/Week total/).parentElement!;
+    await waitFor(() => expect(within(periodTotal()).getByText("1h 30m")).toBeInTheDocument());
+    timerSnapshot = { ...timerSnapshot, timers: [] };
+    timedActivities = [{ ...(timedActivities[0] as object), dayMinutes: 91, weekMinutes: 91 }];
+    expect(poll).toBeDefined();
+    await act(async () => { poll!(); });
+    expect(within(periodTotal()).getByText("1h 31m")).toBeInTheDocument();
+    expect(screen.getByText("26 Aug activity").parentElement).toHaveTextContent("1h 31m");
+  });
+
   it("shows the server-owned day and habit actions", async () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();

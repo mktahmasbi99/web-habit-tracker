@@ -6,6 +6,12 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Restrict frontend file serving to the built frontend directory, including encoded paths and symlinks.
+- Protect database replacement from concurrent reads and writes, and reject invalid imported history dates before replacing live data.
+- Retry failed daily and weekly backups after recovery instead of marking failed runs complete.
+- Enforce daily duration capacity atomically across concurrent additions and edits, and reject new live timers for archived activities.
+- Clamp built-in time-chart ranges to activity start dates and refresh charts and entries after duration changes and timer completion.
+
 - Briefly animate a daily habit’s fire when its current streak sets a new record, then keep the fire and streak count in a fired-up color while it remains the record.
 
 - Reorder Today cards in each Daily habits, Timed activities, and Activity log section with a long press and drag and drop; save order to the server across dates and devices.

@@ -511,12 +511,16 @@ def frontend_file_response(path: Path) -> FileResponse:
     return response
 
 
+def spa_fallback(full_path: str) -> FileResponse:
+    root = FRONTEND_DIST.resolve()
+    candidate = (root / full_path).resolve()
+    if not candidate.is_relative_to(root):
+        raise HTTPException(status_code=404, detail="Not found.")
+    if candidate.is_file():
+        return frontend_file_response(candidate)
+    return frontend_file_response(root / "index.html")
+
+
 if FRONTEND_DIST.is_dir():
     app.mount("/assets", ImmutableStaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
-
-    @app.get("/{full_path:path}")
-    def spa_fallback(full_path: str) -> FileResponse:
-        candidate = FRONTEND_DIST / full_path
-        if candidate.is_file():
-            return frontend_file_response(candidate)
-        return frontend_file_response(FRONTEND_DIST / "index.html")
+    app.get("/{full_path:path}")(spa_fallback)

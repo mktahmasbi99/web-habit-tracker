@@ -89,7 +89,11 @@ Archived cards live on the Archived cards tab, grouped by Daily habits, Timed ac
 
 The collapsed **More** section below the server backup list accepts uploaded backups produced by this web application. Web backups contain an explicit application and format marker. At the bottom of Advanced, the collapsed **Import legacy database** section accepts a compatible legacy SQLite database. Legacy import validates database integrity and schema, requires typing `IMPORT`, migrates a staged copy, creates a safety backup, and atomically swaps the staged database into place. Uploaded source files are never changed.
 
+Failed daily and weekly backups remain due and are retried on the next scheduler check (about one minute later) after storage recovers. A run is marked complete only after its backup succeeds.
+
 Scheduled backup failures appear as dismissible in-app system notifications. The server also logs failures; if storage is too full or unwritable to persist the notification, it is retained in memory when possible.
+
+Import and restore reject malformed or noncanonical calendar dates in stored habit and activity history before replacing live data. Existing live database connections finish before replacement; saves arriving during replacement wait and then use the new database. Run one application process, as in the supplied Docker command, so these operations share the same lock.
 
 Imported data becomes authoritative. There is no synchronization with either legacy application.
 
@@ -143,6 +147,8 @@ status buttons for that habit/date and displays Saving. Reads have a 15-second
 deadline and recoverable loading errors; startup, daily lists, and detail screens
 offer Retry. Writes are never retried automatically. If connectivity is lost
 after submitting a duration entry, check the server's entries before submitting again.
+
+Built-in time-chart periods begin no earlier than the activity’s start date. The open time chart and entry list refresh after adding, editing, or deleting entries and after a timer completes. Archived activities must be restored before a new live timer can start; their archive-day history remains available.
 
 Timed-entry fields start blank and show `0` only as a placeholder. The Minutes field
 accepts a total duration through 1,440 minutes; when it loses focus, the app converts
