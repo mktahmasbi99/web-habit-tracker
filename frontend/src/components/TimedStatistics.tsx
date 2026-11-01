@@ -7,13 +7,14 @@ const parse = (value: string) => new Date(`${value}T12:00:00Z`);
 const iso = (value: Date) => value.toISOString().slice(0, 10);
 const moveDays = (value: string, days: number) => { const date = parse(value); date.setUTCDate(date.getUTCDate() + days); return iso(date); };
 const startOfMonth = (value: string, monthOffset = 0) => { const date = parse(value); return iso(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + monthOffset, 1, 12))); };
+const endOfMonth = (value: string) => moveDays(startOfMonth(value, 1), -1);
 const startOfWeek = (value: string) => { const date = parse(value); date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7)); return iso(date); };
 const minutesLabel = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
 const shortDay = (value: string) => parse(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 function rangeFor(period: Period, selected: string, startDate: string, customStart: string, customEnd: string) {
   if (period === "week") return { start: startOfWeek(selected), end: selected };
-  if (period === "month") return { start: startOfMonth(selected), end: selected };
+  if (period === "month") return { start: startOfMonth(selected), end: endOfMonth(selected) };
   if (period === "sixMonths") return { start: startOfMonth(selected, -5), end: selected };
   if (period === "year") return { start: `${selected.slice(0, 4)}-01-01`, end: selected };
   if (period === "all") return { start: startDate, end: selected };
@@ -29,13 +30,15 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
   const [customStart, setCustomStart] = useState(() => moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6));
   const [customEnd, setCustomEnd] = useState(selectedDate);
   const range = rangeFor(period, selectedDate, activityStart, customStart, customEnd);
+  const queryStart = range.start < activityStart ? activityStart : range.start;
+  const queryEnd = range.end > selectedDate ? selectedDate : range.end;
   const [data, setData] = useState<StatisticsData | null>(null);
   useEffect(() => {
     let active = true;
-    if (range.start > range.end || range.start < activityStart || range.end > selectedDate) { setData(null); return () => { active = false; }; }
-    void api.timedStatistics(activityId, range.start, range.end).then(result => { if (active) setData(result); }).catch(error => { if (active) reportError(error); });
+    if (range.start > range.end || queryStart > queryEnd || (period === "custom" && (range.start < activityStart || range.end > selectedDate))) { setData(null); return () => { active = false; }; }
+    void api.timedStatistics(activityId, queryStart, queryEnd).then(result => { if (active) setData(result); }).catch(error => { if (active) reportError(error); });
     return () => { active = false; };
-  }, [activityId, activityStart, selectedDate, range.start, range.end, reportError]);
+  }, [activityId, activityStart, selectedDate, range.start, range.end, queryStart, queryEnd, period, reportError]);
 
   const buckets = useMemo(() => {
     const daily = new Map((data?.days ?? []).map(day => [day.date, day.minutes]));
