@@ -200,20 +200,18 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-chart-view-toggle { display: flex; gap: 4px; }
 .timed-chart-view-toggle button { min-width: 44px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--separator); border-radius: 10px; background: var(--surface); color: var(--secondary); font: inherit; font-size: .8rem; cursor: pointer; }
 .timed-chart-view-toggle button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); font-weight: 700; }
-.timed-heat-cell[data-level="0"] { background: var(--fill); }
-.timed-heat-cell[data-level="1"] { background: color-mix(in srgb, var(--accent) 25%, var(--fill)); }
-.timed-heat-cell[data-level="2"] { background: color-mix(in srgb, var(--accent) 45%, var(--fill)); }
-.timed-heat-cell[data-level="3"] { background: color-mix(in srgb, var(--accent) 70%, var(--fill)); }
-.timed-heat-cell[data-level="4"] { background: var(--accent); }
-.timed-heat-cell.inactive { background: color-mix(in srgb, var(--secondary) 20%, var(--surface)); }
-.timed-heat-cell.future { background: color-mix(in srgb, var(--secondary) 24%, var(--surface)); }
+.timed-heat-cell[data-level="0"] { background: transparent; }
+.timed-heat-cell[data-level="1"] { background: color-mix(in srgb, var(--done) 25%, transparent); }
+.timed-heat-cell[data-level="2"] { background: color-mix(in srgb, var(--done) 50%, transparent); }
+.timed-heat-cell[data-level="3"] { background: color-mix(in srgb, var(--done) 75%, transparent); }
+.timed-heat-cell[data-level="4"] { background: var(--done); }
 .timed-heatmap-key { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 0; color: var(--secondary); font-size: .72rem; }
 .timed-heatmap-key span { display: inline-flex; align-items: center; gap: 5px; }
-.timed-heatmap-key i { display: block; width: 12px; height: 12px; border-radius: 3px; background: var(--fill); }
-.timed-heatmap-key i[data-level="1"] { background: color-mix(in srgb, var(--accent) 25%, var(--fill)); }
-.timed-heatmap-key i[data-level="2"] { background: color-mix(in srgb, var(--accent) 45%, var(--fill)); }
-.timed-heatmap-key i[data-level="3"] { background: color-mix(in srgb, var(--accent) 70%, var(--fill)); }
-.timed-heatmap-key i[data-level="4"] { background: var(--accent); }
+.timed-heatmap-key i { display: block; width: 12px; height: 12px; border-radius: 3px; background: transparent; }
+.timed-heatmap-key i[data-level="1"] { background: color-mix(in srgb, var(--done) 25%, transparent); }
+.timed-heatmap-key i[data-level="2"] { background: color-mix(in srgb, var(--done) 50%, transparent); }
+.timed-heatmap-key i[data-level="3"] { background: color-mix(in srgb, var(--done) 75%, transparent); }
+.timed-heatmap-key i[data-level="4"] { background: var(--done); }
 .timed-chart-controls { display: flex; flex-wrap: wrap; align-items: end; justify-content: flex-start; gap: 12px; margin: 10px 0 12px; }
 .timed-period-picker { display: flex; flex: none; align-items: center; gap: 8px; }
 .timed-period-picker label { color: var(--secondary); font-size: .8rem; }
@@ -229,7 +227,7 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-chart-axis { stroke: var(--separator); stroke-width: 1; }
 .timed-chart-scale, .timed-chart-label { fill: var(--secondary); font-size: 10px; }
 .timed-chart-label { font-size: 9px; }
-.timed-chart-bar { fill: var(--accent); }
+.timed-chart-bar { fill: var(--done); }
 .timed-chart-point { cursor: pointer; outline: none; }
 .timed-chart-point.active .timed-chart-bar, .timed-chart-point:focus-visible .timed-chart-bar { stroke: var(--label); stroke-width: 2px; }
 .timed-chart-hit-area { fill: transparent; }
