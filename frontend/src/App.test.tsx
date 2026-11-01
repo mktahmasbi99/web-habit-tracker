@@ -768,9 +768,9 @@ describe("Habit Tracker", () => {
     const weeklyRetention = within(scheduling).getAllByLabelText("Keep")[1];
     await user.clear(weeklyRetention);
     await user.type(weeklyRetention, "3");
-    fireEvent.click(document.querySelector(".backup-actions button.destructive-text")!);
-    await user.type(screen.getByLabelText("Type DELETE to continue"), "DELETE");
-    await user.click(screen.getByRole("button", { name: "Delete backup" }));
+    fireEvent.click(document.querySelector(".backup-actions button:last-child")!);
+    await user.type(document.querySelector<HTMLInputElement>(".confirmation-panel input")!, "DELETE");
+    await user.click(document.querySelector<HTMLButtonElement>(".confirmation-panel .danger-button")!);
     await screen.findByText("Backup deleted.");
     expect(within(scheduling).getAllByLabelText("Keep")[1]).toHaveValue("3");
   });
