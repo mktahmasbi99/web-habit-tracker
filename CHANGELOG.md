@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add a daily duration heatmap beside timed activity charts, with period navigation, relative activity intensity, and distinct inactive or future days.
 - Add period-based adherence to the habit calendar: keep the monthly status view by default, use daily heatmaps for other ranges, and show a labeled adherence rate below the selected view.
 - Briefly animate a daily habit’s fire when its current streak sets a new record, then keep the fire and streak count in a fired-up color while it remains the record.
 

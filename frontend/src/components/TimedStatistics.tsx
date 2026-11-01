@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { api } from "../lib/api";
 import type { TimedActivityStatistics as StatisticsData } from "../lib/types";
 
@@ -7,15 +7,29 @@ const parse = (value: string) => new Date(`${value}T12:00:00Z`);
 const iso = (value: Date) => value.toISOString().slice(0, 10);
 const moveDays = (value: string, days: number) => { const date = parse(value); date.setUTCDate(date.getUTCDate() + days); return iso(date); };
 const startOfMonth = (value: string, monthOffset = 0) => { const date = parse(value); return iso(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + monthOffset, 1, 12))); };
+const endOfMonth = (value: string) => moveDays(startOfMonth(value, 1), -1);
 const startOfWeek = (value: string) => { const date = parse(value); date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7)); return iso(date); };
 const minutesLabel = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes / 60)}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
 const shortDay = (value: string) => parse(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const durationLevel = (minutes: number, maximum: number) => minutes > 0 && maximum > 0 ? Math.ceil(minutes / maximum * 4) : 0;
+const moveHeatmapFocus = (event: KeyboardEvent<HTMLDivElement>, week: number, weekday: number, weekCount: number) => {
+  const move = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, [number, number]>)[event.key];
+  if (!move) return;
+  event.preventDefault();
+  const grid = event.currentTarget.closest("[role='grid']");
+  let nextWeek = week + move[0], nextWeekday = weekday + move[1];
+  while (grid && nextWeek >= 0 && nextWeek < weekCount && nextWeekday >= 0 && nextWeekday < 7) {
+    const next = grid.querySelector<HTMLDivElement>(`[data-week="${nextWeek}"][data-weekday="${nextWeekday}"]`);
+    if (next) { next.focus(); return; }
+    nextWeek += move[0]; nextWeekday += move[1];
+  }
+};
 
 function rangeFor(period: Period, selected: string, startDate: string, customStart: string, customEnd: string) {
-  if (period === "week") return { start: startOfWeek(selected), end: selected };
-  if (period === "month") return { start: startOfMonth(selected), end: selected };
-  if (period === "sixMonths") return { start: startOfMonth(selected, -5), end: selected };
-  if (period === "year") return { start: `${selected.slice(0, 4)}-01-01`, end: selected };
+  if (period === "week") { const start = startOfWeek(selected); return { start, end: moveDays(start, 6) }; }
+  if (period === "month") return { start: startOfMonth(selected), end: endOfMonth(selected) };
+  if (period === "sixMonths") return { start: startOfMonth(selected, -5), end: endOfMonth(selected) };
+  if (period === "year") return { start: `${selected.slice(0, 4)}-01-01`, end: `${selected.slice(0, 4)}-12-31` };
   if (period === "all") return { start: startDate, end: selected };
   return { start: customStart, end: customEnd };
 }
@@ -24,18 +38,34 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
   activityId: number; activityStart: string; selectedDate: string; selectedMinutes: number; reportError: (error: unknown) => void;
 }) {
   const [period, setPeriod] = useState<Period>("week");
+  const [view, setView] = useState<"chart" | "heatmap">("chart");
+  const [chartDate, setChartDate] = useState(selectedDate);
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
   const [hoveredBucketKey, setHoveredBucketKey] = useState<string | null>(null);
   const [customStart, setCustomStart] = useState(() => moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6));
   const [customEnd, setCustomEnd] = useState(selectedDate);
-  const range = rangeFor(period, selectedDate, activityStart, customStart, customEnd);
+  useEffect(() => { setChartDate(selectedDate); setCustomStart(moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6)); setCustomEnd(selectedDate); }, [activityId, activityStart, selectedDate]);
+  const range = rangeFor(period, period === "all" ? selectedDate : chartDate, activityStart, customStart, customEnd);
+  const queryStart = range.start < activityStart ? activityStart : range.start;
+  const queryEnd = range.end > selectedDate ? selectedDate : range.end;
+  const validCustomRange = Boolean(customStart && customEnd && customStart <= customEnd);
+  const customDays = validCustomRange ? Math.round((parse(customEnd).getTime() - parse(customStart).getTime()) / 86_400_000) + 1 : 0;
+  const canMovePrevious = period === "custom" ? validCustomRange && moveDays(customStart, -customDays) >= activityStart : period !== "all";
+  const canMoveNext = period === "custom" ? validCustomRange && moveDays(customEnd, customDays) <= selectedDate : period !== "all";
+  const moveInterval = (direction: -1 | 1) => {
+    if (period === "week") setChartDate(moveDays(startOfWeek(chartDate), direction * 7));
+    else if (period === "month") setChartDate(startOfMonth(chartDate, direction));
+    else if (period === "sixMonths") setChartDate(startOfMonth(chartDate, direction * 6));
+    else if (period === "year") setChartDate(`${Number(chartDate.slice(0, 4)) + direction}-01-01`);
+    else if (period === "custom") { setCustomStart(moveDays(customStart, direction * customDays)); setCustomEnd(moveDays(customEnd, direction * customDays)); }
+  };
   const [data, setData] = useState<StatisticsData | null>(null);
   useEffect(() => {
     let active = true;
-    if (range.start > range.end || range.start < activityStart || range.end > selectedDate) { setData(null); return () => { active = false; }; }
-    void api.timedStatistics(activityId, range.start, range.end).then(result => { if (active) setData(result); }).catch(error => { if (active) reportError(error); });
+    if (range.start > range.end || queryStart > queryEnd || (period === "custom" && (range.start < activityStart || range.end > selectedDate))) { setData(null); return () => { active = false; }; }
+    void api.timedStatistics(activityId, queryStart, queryEnd).then(result => { if (active) setData(result); }).catch(error => { if (active) reportError(error); });
     return () => { active = false; };
-  }, [activityId, activityStart, selectedDate, range.start, range.end, reportError]);
+  }, [activityId, activityStart, selectedDate, range.start, range.end, queryStart, queryEnd, period, reportError]);
 
   const buckets = useMemo(() => {
     const daily = new Map((data?.days ?? []).map(day => [day.date, day.minutes]));
@@ -52,6 +82,23 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
     }
     return [...groups.entries()].map(([key, item]) => ({ key, ...item }));
   }, [data, period, range.start, range.end]);
+  const heatWeeks = useMemo(() => {
+    const totalDays = Math.max(0, Math.round((parse(range.end).getTime() - parse(range.start).getTime()) / 86_400_000) + 1);
+    const leading = (parse(range.start).getUTCDay() + 6) % 7;
+    const daily = new Map((data?.days ?? []).map(day => [day.date, day.minutes]));
+    return Array.from({ length: Math.ceil((leading + totalDays) / 7) }, (_, weekIndex) => {
+      const days = Array.from({ length: 7 }, (_, weekday) => {
+        const offset = weekIndex * 7 + weekday - leading;
+        if (offset < 0 || offset >= totalDays) return null;
+        const date = moveDays(range.start, offset);
+        return { date, minutes: daily.get(date) ?? 0 };
+      });
+      const monthDate = days.find(day => day?.date.slice(-2) === "01")?.date ?? (weekIndex === 0 ? days[leading]?.date : undefined);
+      return { days, month: monthDate ? parse(monthDate).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }) : null };
+    });
+  }, [data, range.start, range.end]);
+  const maxDailyMinutes = (data?.days ?? []).reduce((maximum, day) => Math.max(maximum, day.minutes), 0);
+  const compactHeatmap = heatWeeks.length > 20 && heatWeeks.length <= 53;
   useEffect(() => { setSelectedBucketKey(null); setHoveredBucketKey(null); }, [period, range.start, range.end]);
   const activeBucket = buckets.find(bucket => bucket.key === hoveredBucketKey) ?? buckets.find(bucket => bucket.key === selectedBucketKey);
   const total = data?.days.reduce((sum, day) => sum + day.minutes, 0) ?? 0;
@@ -69,17 +116,17 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
   const validCustom = customStart >= activityStart && customStart <= customEnd && customEnd <= selectedDate;
 
   return <section className="timed-statistics">
-    <div className="timed-statistics-heading"><h3>Time chart</h3></div>
+    <div className="timed-statistics-heading"><h3>Time chart</h3><div className="timed-chart-view-toggle" role="group" aria-label="Time visualization"><button type="button" aria-pressed={view === "chart"} onClick={() => setView("chart")}>Chart</button><button type="button" aria-pressed={view === "heatmap"} onClick={() => setView("heatmap")}>Heat map</button></div></div>
     {validCustom || period !== "custom" ? <>
-      <div className="timed-chart-scroll"><svg className="timed-chart" viewBox={`0 0 ${chartWidth} 220`} role="img" aria-label={`${periodLabel[period]} time chart from ${range.start} to ${range.end}`}>
+      {view === "chart" ? <div className="timed-chart-scroll"><svg className="timed-chart" viewBox={`0 0 ${chartWidth} 220`} preserveAspectRatio="none" role="img" aria-label={`${periodLabel[period]} time chart from ${range.start} to ${range.end}`}>
         <line x1="0" y1={plotTop + plotHeight} x2={chartWidth} y2={plotTop + plotHeight} className="timed-chart-axis" />
         <text x="0" y="12" className="timed-chart-scale">{minutesLabel(maxValue)}</text>
         {buckets.map((bucket, index) => { const height = bucket.minutes ? Math.max(2, bucket.minutes / maxValue * plotHeight) : 0; const x = index * barSlot + (barSlot - barWidth) / 2; const showLabel = buckets.length <= 14 || index % Math.ceil(buckets.length / 12) === 0 || index === buckets.length - 1; const active = activeBucket?.key === bucket.key; return <g key={bucket.key} className={`timed-chart-point ${active ? "active" : ""}`} role="button" tabIndex={0} aria-label={`${bucket.label} total: ${minutesLabel(bucket.minutes)}`} aria-pressed={selectedBucketKey === bucket.key} onPointerEnter={() => setHoveredBucketKey(bucket.key)} onPointerLeave={() => setHoveredBucketKey(null)} onFocus={() => setHoveredBucketKey(bucket.key)} onBlur={() => setHoveredBucketKey(null)} onClick={() => setSelectedBucketKey(bucket.key)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedBucketKey(bucket.key); } }}><title>{bucket.label}: {minutesLabel(bucket.minutes)}{active ? " (selected interval)" : ""}</title><rect className="timed-chart-bar" x={x} y={plotTop + plotHeight - height} width={barWidth} height={height} rx="3" /><rect className="timed-chart-hit-area" x={index * barSlot} y={plotTop} width={barSlot} height={plotHeight} /><text className="timed-chart-label" textAnchor="middle" x={x + barWidth / 2} y="190">{showLabel ? bucket.label : ""}</text></g>; })}
         {activeBucket && activeBucketIndex >= 0 && <g className="timed-chart-value" aria-hidden="true"><rect x={activeLabelX} y={activeLabelY} width={activeLabelWidth} height="21" rx="6" /><text x={activeLabelX + activeLabelWidth / 2} y={activeLabelY + 14} textAnchor="middle">{activeLabel}</text></g>}
-      </svg></div>
+      </svg></div> : <div className={`adherence-heatmap-scroll timed-heatmap-scroll${compactHeatmap ? " year" : ""}`}><div className={`adherence-heatmap timed-heatmap${compactHeatmap ? " year" : ""}`} role="grid" aria-label={`${periodLabel[period]} daily duration heatmap from ${range.start} to ${range.end}`}><div className="adherence-months" style={{ gridTemplateColumns: `repeat(${heatWeeks.length}, ${compactHeatmap ? "minmax(0, 1fr)" : "12px"})` }} aria-hidden="true">{heatWeeks.map((week, index) => week.month && <span key={index} style={{ gridColumn: index + 1 }}>{week.month}</span>)}</div><div className="adherence-weekdays" aria-hidden="true"><span>Mon</span><span /><span>Wed</span><span /><span>Fri</span><span /><span /></div><div className="adherence-day-rows">{Array.from({ length: 7 }, (_, weekday) => <div className="adherence-day-row" role="row" key={weekday}>{heatWeeks.map((week, index) => { const day = week.days[weekday]; if (!day) return <i key={index} className="adherence-cell empty" aria-hidden="true" />; const inactive = day.date < activityStart; const future = day.date > selectedDate; const description = inactive ? "Before activity started" : future ? "Future" : day.minutes ? `${minutesLabel(day.minutes)} logged` : "No time logged"; return <div key={day.date} className={`adherence-cell timed-heat-cell${inactive ? " inactive" : future ? " future" : ""}`} data-level={durationLevel(day.minutes, maxDailyMinutes)} data-week={index} data-weekday={weekday} role="gridcell" tabIndex={index === 0 && weekday === (parse(range.start).getUTCDay() + 6) % 7 ? 0 : -1} title={`${day.date}: ${description}`} aria-label={`${day.date}, ${description}`} onKeyDown={event => moveHeatmapFocus(event, index, weekday, heatWeeks.length)} />; })}</div>)}</div></div><div className="timed-heatmap-key" aria-label="Duration intensity from less to more"><span><i data-level="0" />No time</span><span><i data-level="1" />Less</span><span><i data-level="4" />More</span></div></div>}
     </> : <p className="secondary" role="status">Choose a valid date range within this activity.</p>}
     <div className="timed-chart-controls">
-      <div className="timed-period-picker"><label htmlFor="timed-chart-period">Chart period</label><select id="timed-chart-period" aria-label="Chart period" value={period} onChange={event => setPeriod(event.target.value as Period)}>{options.map(option => <option key={option} value={option}>{periodLabel[option]}</option>)}</select></div>
+      <div className="timed-period-picker"><label htmlFor="timed-chart-period">Chart period</label><button type="button" aria-label="Previous chart interval" title={period === "all" ? "All time shows the full history" : "Previous interval"} disabled={!canMovePrevious} onClick={() => moveInterval(-1)}>‹</button><select id="timed-chart-period" aria-label="Chart period" value={period} onChange={event => { setPeriod(event.target.value as Period); setChartDate(selectedDate); }}>{options.map(option => <option key={option} value={option}>{periodLabel[option]}</option>)}</select><button type="button" aria-label="Next chart interval" title={period === "all" ? "All time shows the full history" : "Next interval"} disabled={!canMoveNext} onClick={() => moveInterval(1)}>›</button></div>
       {period === "custom" && <div className="timed-custom-range"><label>From<input type="date" min={activityStart} max={selectedDate} value={customStart} onChange={event => setCustomStart(event.target.value)} /></label><label>To<input type="date" min={activityStart} max={selectedDate} value={customEnd} onChange={event => setCustomEnd(event.target.value)} /></label></div>}
     </div>
     {validCustom || period !== "custom" ? <div className="timed-selected-head"><div><span>{shortDay(selectedDate)} activity</span><strong>{minutesLabel(selectedMinutes)}</strong></div><div><span>{periodLabel[period]} total · {shortDay(range.start)}–{shortDay(range.end)}</span><strong>{minutesLabel(total)}</strong></div></div> : null}
