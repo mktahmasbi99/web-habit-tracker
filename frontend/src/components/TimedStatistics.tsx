@@ -13,10 +13,10 @@ const minutesLabel = (minutes: number) => minutes >= 60 ? `${Math.floor(minutes 
 const shortDay = (value: string) => parse(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 
 function rangeFor(period: Period, selected: string, startDate: string, customStart: string, customEnd: string) {
-  if (period === "week") return { start: startOfWeek(selected), end: selected };
+  if (period === "week") { const start = startOfWeek(selected); return { start, end: moveDays(start, 6) }; }
   if (period === "month") return { start: startOfMonth(selected), end: endOfMonth(selected) };
-  if (period === "sixMonths") return { start: startOfMonth(selected, -5), end: selected };
-  if (period === "year") return { start: `${selected.slice(0, 4)}-01-01`, end: selected };
+  if (period === "sixMonths") return { start: startOfMonth(selected, -5), end: endOfMonth(selected) };
+  if (period === "year") return { start: `${selected.slice(0, 4)}-01-01`, end: `${selected.slice(0, 4)}-12-31` };
   if (period === "all") return { start: startDate, end: selected };
   return { start: customStart, end: customEnd };
 }
@@ -25,13 +25,26 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
   activityId: number; activityStart: string; selectedDate: string; selectedMinutes: number; reportError: (error: unknown) => void;
 }) {
   const [period, setPeriod] = useState<Period>("week");
+  const [chartDate, setChartDate] = useState(selectedDate);
   const [selectedBucketKey, setSelectedBucketKey] = useState<string | null>(null);
   const [hoveredBucketKey, setHoveredBucketKey] = useState<string | null>(null);
   const [customStart, setCustomStart] = useState(() => moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6));
   const [customEnd, setCustomEnd] = useState(selectedDate);
-  const range = rangeFor(period, selectedDate, activityStart, customStart, customEnd);
+  useEffect(() => { setChartDate(selectedDate); setCustomStart(moveDays(selectedDate, -6) < activityStart ? activityStart : moveDays(selectedDate, -6)); setCustomEnd(selectedDate); }, [activityId, activityStart, selectedDate]);
+  const range = rangeFor(period, period === "all" ? selectedDate : chartDate, activityStart, customStart, customEnd);
   const queryStart = range.start < activityStart ? activityStart : range.start;
   const queryEnd = range.end > selectedDate ? selectedDate : range.end;
+  const validCustomRange = Boolean(customStart && customEnd && customStart <= customEnd);
+  const customDays = validCustomRange ? Math.round((parse(customEnd).getTime() - parse(customStart).getTime()) / 86_400_000) + 1 : 0;
+  const canMovePrevious = period === "custom" ? validCustomRange && moveDays(customStart, -customDays) >= activityStart : period !== "all";
+  const canMoveNext = period === "custom" ? validCustomRange && moveDays(customEnd, customDays) <= selectedDate : period !== "all";
+  const moveInterval = (direction: -1 | 1) => {
+    if (period === "week") setChartDate(moveDays(startOfWeek(chartDate), direction * 7));
+    else if (period === "month") setChartDate(startOfMonth(chartDate, direction));
+    else if (period === "sixMonths") setChartDate(startOfMonth(chartDate, direction * 6));
+    else if (period === "year") setChartDate(`${Number(chartDate.slice(0, 4)) + direction}-01-01`);
+    else if (period === "custom") { setCustomStart(moveDays(customStart, direction * customDays)); setCustomEnd(moveDays(customEnd, direction * customDays)); }
+  };
   const [data, setData] = useState<StatisticsData | null>(null);
   useEffect(() => {
     let active = true;
@@ -82,7 +95,7 @@ export default function TimedStatistics({ activityId, activityStart, selectedDat
       </svg></div>
     </> : <p className="secondary" role="status">Choose a valid date range within this activity.</p>}
     <div className="timed-chart-controls">
-      <div className="timed-period-picker"><label htmlFor="timed-chart-period">Chart period</label><select id="timed-chart-period" aria-label="Chart period" value={period} onChange={event => setPeriod(event.target.value as Period)}>{options.map(option => <option key={option} value={option}>{periodLabel[option]}</option>)}</select></div>
+      <div className="timed-period-picker"><label htmlFor="timed-chart-period">Chart period</label><button type="button" aria-label="Previous chart interval" title={period === "all" ? "All time shows the full history" : "Previous interval"} disabled={!canMovePrevious} onClick={() => moveInterval(-1)}>‹</button><select id="timed-chart-period" aria-label="Chart period" value={period} onChange={event => { setPeriod(event.target.value as Period); setChartDate(selectedDate); }}>{options.map(option => <option key={option} value={option}>{periodLabel[option]}</option>)}</select><button type="button" aria-label="Next chart interval" title={period === "all" ? "All time shows the full history" : "Next interval"} disabled={!canMoveNext} onClick={() => moveInterval(1)}>›</button></div>
       {period === "custom" && <div className="timed-custom-range"><label>From<input type="date" min={activityStart} max={selectedDate} value={customStart} onChange={event => setCustomStart(event.target.value)} /></label><label>To<input type="date" min={activityStart} max={selectedDate} value={customEnd} onChange={event => setCustomEnd(event.target.value)} /></label></div>}
     </div>
     {validCustom || period !== "custom" ? <div className="timed-selected-head"><div><span>{shortDay(selectedDate)} activity</span><strong>{minutesLabel(selectedMinutes)}</strong></div><div><span>{periodLabel[period]} total · {shortDay(range.start)}–{shortDay(range.end)}</span><strong>{minutesLabel(total)}</strong></div></div> : null}

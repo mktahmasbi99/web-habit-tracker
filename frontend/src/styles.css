@@ -201,6 +201,8 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-period-picker { display: flex; flex: none; align-items: center; gap: 8px; }
 .timed-period-picker label { color: var(--secondary); font-size: .8rem; }
 .timed-period-picker select, .timed-period-picker button { min-height: 40px; padding: 7px 12px; border: 1px solid var(--separator); border-radius: 10px; background: var(--surface); color: var(--label); font: inherit; cursor: pointer; }
+.timed-period-picker button { width: 44px; min-height: 44px; padding: 0; font-size: 1.2rem; }
+.timed-period-picker button:disabled { color: var(--tertiary); cursor: default; opacity: .55; }
 .timed-period-picker button.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); font-weight: 700; }
 .timed-custom-range { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; }
 .timed-custom-range label { display: grid; gap: 4px; color: var(--secondary); font-size: .75rem; }
