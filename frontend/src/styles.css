@@ -205,6 +205,7 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-heat-cell[data-level="2"] { background: color-mix(in srgb, var(--done) 50%, var(--fill)); }
 .timed-heat-cell[data-level="3"] { background: color-mix(in srgb, var(--done) 75%, var(--fill)); }
 .timed-heat-cell[data-level="4"] { background: var(--done); }
+.adherence-cell.timed-heat-cell.inactive, .adherence-cell.timed-heat-cell.future { background: color-mix(in srgb, #8b9099 55%, var(--surface)); }
 .timed-heatmap-key { display: flex; flex-wrap: wrap; gap: 8px 12px; margin: 12px 0 0; color: var(--secondary); font-size: .72rem; }
 .timed-heatmap-key span { display: inline-flex; align-items: center; gap: 5px; }
 .timed-heatmap-key i { display: block; width: 12px; height: 12px; border-radius: 3px; background: var(--fill); }
