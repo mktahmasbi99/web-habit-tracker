@@ -21,6 +21,9 @@ let activityLogs: unknown[];
 let archivedHabit = false;
 let archivedTimedActivity = false;
 let archivedActivityLog = false;
+let backupSettingsSaveFails = false;
+let savedBackupSettingsPayload: Record<string, unknown> | null = null;
+let backupItems: Array<{ filename: string; category: "on-demand"; createdAt: string; size: number; safety: boolean }>;
 let timerSnapshot: { serverNow: string; timers: Array<Record<string, unknown>> };
 
 describe("Habit Tracker", () => {
@@ -41,6 +44,9 @@ describe("Habit Tracker", () => {
     archivedHabit = false;
     archivedTimedActivity = false;
     archivedActivityLog = false;
+    backupSettingsSaveFails = false;
+    savedBackupSettingsPayload = null;
+    backupItems = [];
     try { window.localStorage?.setItem?.("stopwatch-interval-alert", ""); } catch { /* optional storage */ }
     timerSnapshot = { serverNow: new Date().toISOString(), timers: [] };
     window.history.replaceState(null, "", "/");
@@ -51,8 +57,16 @@ describe("Habit Tracker", () => {
       if (url.startsWith("/api/card-orders/")) return ok({ ids: JSON.parse(String(init?.body)).ids });
       if (url === "/api/unresolved") return ok([{ date: "2026-08-25", pendingCount: 1 }]);
       if (url === "/api/system-notifications") return ok([]);
-      if (url === "/api/backups") return ok([]);
-      if (url === "/api/backups/settings") return ok({ dailyEnabled: true, dailyTime: "01:00", dailyRetention: 7, weeklyEnabled: true, weeklyDay: 6, weeklyTime: "01:00", weeklyRetention: 8, safetyRetention: 8 });
+      if (/^\/api\/backups\/[^/]+$/.test(url) && init?.method === "DELETE") { backupItems = []; return ok(undefined, 204); }
+      if (url === "/api/backups") return ok(backupItems);
+      if (url === "/api/backups/settings") {
+        const current = { dailyEnabled: true, dailyTime: "01:00", dailyRetention: 7, weeklyEnabled: true, weeklyDay: 6, weeklyTime: "01:00", weeklyRetention: 8, safetyRetention: 8 };
+        if (init?.method === "PUT") {
+          savedBackupSettingsPayload = JSON.parse(String(init.body));
+          return backupSettingsSaveFails ? ok({ detail: "Save failed." }, 500) : ok({ ...current, ...savedBackupSettingsPayload });
+        }
+        return ok(current);
+      }
       if (url === "/api/habits") return ok([{ id: 1, name: "Read", startDate: "2026-08-26", archived: archivedHabit, archivedAt: archivedHabit ? "2026-08-26" : null, latestActiveRange: archivedHabit ? { startDate: "2026-08-26", endDate: "2026-08-26" } : null, noteCount: 0 }, { id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1 }]);
       if (url === "/api/habits/1") {
         if (/\/archive$/.test(url) && init?.method === "POST") archivedHabit = true;
@@ -61,6 +75,26 @@ describe("Habit Tracker", () => {
       }
       if (url === "/api/habits/1/archive" && init?.method === "POST") { archivedHabit = true; return ok({ id: 1, name: habitName, startDate: habitStartDate, archived: true, archivedAt: "2026-08-26", latestActiveRange: { startDate: habitStartDate, endDate: "2026-08-26" }, noteCount: 0, currentStreak: 0, longestStreak: null, streaks: [] }); }
       if (url === "/api/habits/2") return ok({ id: 2, name: "Run", startDate: "2026-07-01", archived: true, archivedAt: "2026-08-20", latestActiveRange: { startDate: "2026-07-01", endDate: "2026-08-20" }, noteCount: 1, currentStreak: 3, longestStreak: { startDate: "2026-08-18", endDate: "2026-08-20", length: 3 }, streaks: [] });
+      if (/^\/api\/habits\/1\/months\/\d{4}-\d{2}$/.test(url)) {
+        const month = url.slice(-7); const start = `${month}-01`; const end = new Date(`${start}T12:00:00Z`); end.setUTCMonth(end.getUTCMonth() + 1); end.setUTCDate(0);
+        const days = [];
+        for (let day = new Date(`${start}T12:00:00Z`); day <= end; day.setUTCDate(day.getUTCDate() + 1)) {
+          const date = day.toISOString().slice(0, 10); const number = Number(date.slice(-2)); const active = date >= habitStartDate && date <= "2026-08-26";
+          days.push({ date, active, status: active ? number % 7 === 0 ? "missed" : number % 5 === 0 ? "pending" : "done" : null });
+        }
+        return ok({ id: 1, name: habitName, startDate: habitStartDate, month, days });
+      }
+      if (url.startsWith("/api/habits/1/adherence?")) {
+        const params = new URLSearchParams(url.split("?")[1]);
+        const start = params.get("start")! < habitStartDate ? habitStartDate : params.get("start")!;
+        const end = params.get("end")!;
+        const days = [];
+        for (let day = new Date(`${start}T12:00:00Z`); day <= new Date(`${end}T12:00:00Z`); day.setUTCDate(day.getUTCDate() + 1)) {
+          const date = day.toISOString().slice(0, 10); const number = Number(date.slice(-2));
+          days.push({ date, status: number % 7 === 0 ? "missed" : number % 5 === 0 ? "pending" : "done" });
+        }
+        return ok(days);
+      }
       if (url === "/api/habits/2/archive-periods") return ok([]);
       if (url === "/api/habits/1/days/2026-08-26/note") return ok(noteResponse);
       if (/^\/api\/timed-activities\/\d+\/days\/\d{4}-\d{2}-\d{2}\/note$/.test(url)) return ok(noteResponse);
@@ -188,6 +222,38 @@ describe("Habit Tracker", () => {
     expect(screen.getByText("4 days")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Show less" }));
     expect(screen.queryByText("4 days")).not.toBeInTheDocument();
+  });
+
+  it("keeps monthly status as the default, shows its rate, and switches to custom adherence", async () => {
+    habitStartDate = "2024-11-01";
+    const user = userEvent.setup(); render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Open Read" }));
+    expect(await screen.findByRole("grid", { name: "August 2026 habit status" })).toBeInTheDocument();
+    expect(await screen.findByText(/Monthly adherence · August 2026/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Period" })).toHaveValue("month");
+    await user.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(await screen.findByRole("grid", { name: "July 2026 habit status" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next month" }));
+    expect(await screen.findByRole("grid", { name: "August 2026 habit status" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous month" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "week");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "month");
+    expect(await screen.findByRole("grid", { name: "August 2026 habit status" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "year");
+    expect(await screen.findByText("Yearly adherence · 2026")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous year" }));
+    expect(await screen.findByText("Yearly adherence · 2025")).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "week");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "year");
+    expect(await screen.findByText("Yearly adherence · 2026")).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "custom");
+    expect(screen.getByLabelText("From")).toHaveAttribute("type", "date");
+    expect(screen.getByLabelText("To")).toHaveAttribute("type", "date");
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2025-01-01" } });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "month");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Period" }), "custom");
+    expect(screen.getByLabelText("From")).toHaveValue("2025-01-01");
+    expect(await screen.findByText(/Custom adherence ·/)).toBeInTheDocument();
   });
 
   it("keeps the current screen visible and marks connection loss", async () => {
@@ -646,6 +712,67 @@ describe("Habit Tracker", () => {
     expect(screen.getByRole("heading", { name: "Server time" })).toBeInTheDocument();
     expect(screen.getByText(/timezone comes from the server/)).toBeInTheDocument();
     expect(screen.getByText("Europe/Warsaw")).toBeInTheDocument();
+  });
+
+  it("shows a temporary green toast for saved backup settings and clears it on edits", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    await user.click(screen.getByRole("button", { name: "Backup and restore" }));
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    const scheduling = screen.getByRole("heading", { name: "Backup scheduling" }).closest("form")!;
+    await user.click(within(scheduling).getByRole("button", { name: "Save settings" }));
+    const confirmation = await screen.findByRole("status");
+    expect(confirmation).toHaveClass("backup-settings-toast");
+    expect(confirmation).toHaveTextContent("Backup settings saved.");
+    await user.click(within(scheduling).getByLabelText("Daily backups"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("does not show a success confirmation when saving backup settings fails", async () => {
+    backupSettingsSaveFails = true;
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    await user.click(screen.getByRole("button", { name: "Backup and restore" }));
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    const scheduling = screen.getByRole("heading", { name: "Backup scheduling" }).closest("form")!;
+    await user.click(within(scheduling).getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Save failed.");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("keeps retention input edits literal without adding leading zeroes", async () => {
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    await user.click(screen.getByRole("button", { name: "Backup and restore" }));
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    const scheduling = screen.getByRole("heading", { name: "Backup scheduling" }).closest("form")!;
+    const weeklyRetention = within(scheduling).getAllByLabelText("Keep")[1];
+    await user.clear(weeklyRetention);
+    await user.type(weeklyRetention, "3");
+    expect(weeklyRetention).toHaveValue("3");
+    await user.click(within(scheduling).getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(savedBackupSettingsPayload?.weeklyRetention).toBe(3));
+  });
+
+  it("keeps unsaved retention edits when refreshing the backup list", async () => {
+    backupItems = [{ filename: "manual.sqlite3", category: "on-demand", createdAt: "2026-08-01T00:00:00Z", size: 100, safety: false }];
+    const user = userEvent.setup(); render(<App />);
+    await screen.findByRole("heading", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    await user.click(screen.getByRole("button", { name: "Backup and restore" }));
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    const scheduling = screen.getByRole("heading", { name: "Backup scheduling" }).closest("form")!;
+    const weeklyRetention = within(scheduling).getAllByLabelText("Keep")[1];
+    await user.clear(weeklyRetention);
+    await user.type(weeklyRetention, "3");
+    fireEvent.click(document.querySelector(".backup-actions button.destructive-text")!);
+    await user.type(screen.getByLabelText("Type DELETE to continue"), "DELETE");
+    await user.click(screen.getByRole("button", { name: "Delete backup" }));
+    await screen.findByText("Backup deleted.");
+    expect(within(scheduling).getAllByLabelText("Keep")[1]).toHaveValue("3");
   });
 
   it("switches between System and the two shared artwork themes", async () => {

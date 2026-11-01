@@ -1650,6 +1650,36 @@ class HabitDatabase:
             current += timedelta(days=1)
         return {"id": habit_id, "name": habit["name"], "startDate": habit["start_date"], "month": month_value, "days": days}
 
+    def habit_adherence_days(self, habit_id: int, start_value: str, end_value: str) -> list[dict]:
+        start, end = self.parse_day(start_value), self.parse_day(end_value)
+        if start > end:
+            raise DomainError("The end date must be on or after the start date.")
+        today = self.today()
+        if end > today:
+            raise DomainError("The end date cannot be in the future.")
+        start_value, end_value = start.isoformat(), end.isoformat()
+        with self.connect() as connection:
+            habit = self._habit_row(connection, habit_id)
+            logs = dict(connection.execute(
+                "SELECT log_date, status FROM habit_logs WHERE habit_id = ? AND log_date >= ? AND log_date <= ?",
+                (habit_id, start_value, end_value),
+            ))
+            periods = connection.execute(
+                "SELECT archived_at, resurrected_at FROM habit_archive_periods WHERE habit_id = ?",
+                (habit_id,),
+            ).fetchall()
+        days, current = [], start
+        while current <= end:
+            value = current.isoformat()
+            active = habit["start_date"] <= value and not any(
+                period["archived_at"] < value and (period["resurrected_at"] is None or period["resurrected_at"] > value)
+                for period in periods
+            )
+            if active:
+                days.append({"date": value, "status": logs.get(value, "pending")})
+            current += timedelta(days=1)
+        return days
+
     def rename_habit(self, habit_id: int, name: str) -> dict:
         cleaned = self._clean_name(name)
         with self.connect() as connection, connection:

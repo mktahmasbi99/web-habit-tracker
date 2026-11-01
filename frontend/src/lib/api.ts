@@ -1,4 +1,4 @@
-import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivityStatistics, TimedActivitySummary, TimedActivityTimer, TimedActivityTimers, TimedActivityWeek, TimerMode, Unresolved } from "./types";
+import type { ActivityLogDay, ActivityLogMonth, ActivityLogNote, ActivityLogSummary, ArchivePeriod, BackupFile, BackupSettings, Config, HabitAdherenceDay, HabitDay, HabitDetail, HabitMonth, HabitNote, HabitSummary, NoteDetail, NoteSummary, Status, SystemNotification, Theme, TimedActivityDay, TimedActivityNote, TimedActivityStatistics, TimedActivitySummary, TimedActivityTimer, TimedActivityTimers, TimedActivityWeek, TimerMode, Unresolved } from "./types";
 
 export class ApiError extends Error {
   constructor(message: string, public status?: number, public data?: unknown) { super(message); }
@@ -103,6 +103,7 @@ export const api = {
   habitSummaries: () => request<HabitSummary[]>("/api/habits"),
   habitDetail: (id: number) => request<HabitDetail>(`/api/habits/${id}`),
   habitMonth: (id: number, month: string, signal?: AbortSignal) => request<HabitMonth>(`/api/habits/${id}/months/${month}`, { signal }),
+  habitAdherence: (id: number, start: string, end: string, signal?: AbortSignal) => request<HabitAdherenceDay[]>(`/api/habits/${id}/adherence?start=${start}&end=${end}`, { signal }),
   updateHabit: (id: number, name: string, startDate: string) => request<HabitDetail>(`/api/habits/${id}`, json("PATCH", { name, startDate })),
   archiveHabit: (id: number) => request<HabitDetail>(`/api/habits/${id}/archive`, { method: "POST" }),
   restoreHabit: (id: number) => request<HabitDetail>(`/api/habits/${id}/restore`, { method: "POST" }),

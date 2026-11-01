@@ -377,6 +377,33 @@ def test_month_and_unresolved_respect_archived_gaps(store):
     assert summary[archived.isoformat()] == {"date": archived.isoformat(), "done": 0, "missed": 0}
 
 
+def test_habit_adherence_days_include_pending_and_skip_archived_gaps(store):
+    today = store.today()
+    start = today - timedelta(days=4)
+    archived = today - timedelta(days=3)
+    restored = today - timedelta(days=1)
+    habit = store.create_habit("Read", start.isoformat())
+    with store.connect() as connection, connection:
+        connection.execute(
+            "INSERT INTO habit_archive_periods(habit_id, archived_at, resurrected_at) VALUES (?, ?, ?)",
+            (habit["id"], archived.isoformat(), restored.isoformat()),
+        )
+    store.set_status(habit["id"], start.isoformat(), "done")
+    store.set_status(habit["id"], archived.isoformat(), "missed")
+    store.set_status(habit["id"], (today - timedelta(days=2)).isoformat(), "pending")
+    store.set_status(habit["id"], (today - timedelta(days=1)).isoformat(), "done")
+    days = store.habit_adherence_days(habit["id"], start.isoformat(), today.isoformat())
+    assert days == [
+        {"date": start.isoformat(), "status": "done"},
+        {"date": archived.isoformat(), "status": "missed"},
+        {"date": restored.isoformat(), "status": "done"},
+        {"date": today.isoformat(), "status": "pending"},
+    ]
+    assert store.habit_adherence_days(habit["id"], start.strftime("%Y%m%d"), today.strftime("%Y%m%d")) == days
+    with pytest.raises(DomainError, match="on or after"):
+        store.habit_adherence_days(habit["id"], today.isoformat(), start.isoformat())
+
+
 def test_notes_and_statistics(store):
     today = store.today().isoformat()
     habit = store.create_habit("Journal", today)
