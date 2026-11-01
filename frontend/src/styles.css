@@ -206,7 +206,7 @@ input, textarea, select { scroll-margin-block: 80px; }
 .timed-custom-range label { display: grid; gap: 4px; color: var(--secondary); font-size: .75rem; }
 .timed-custom-range input { min-height: 42px; padding: 7px 10px; border: 1px solid var(--separator); border-radius: 9px; background: var(--surface); color: var(--label); font: inherit; }
 .timed-chart-scroll { overflow-x: auto; padding: 8px 0 2px; }
-.timed-chart { display: block; width: 100%; min-width: 640px; height: 220px; overflow: visible; }
+.timed-chart { display: block; width: 100%; min-width: 0; height: 220px; overflow: visible; }
 .timed-chart-axis { stroke: var(--separator); stroke-width: 1; }
 .timed-chart-scale, .timed-chart-label { fill: var(--secondary); font-size: 10px; }
 .timed-chart-label { font-size: 9px; }
