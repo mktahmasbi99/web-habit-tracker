@@ -6,6 +6,7 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+- Add period-based adherence to the habit calendar: keep the monthly status view by default, use daily heatmaps for other ranges, and show a labeled adherence rate below the selected view.
 - Briefly animate a daily habit’s fire when its current streak sets a new record, then keep the fire and streak count in a fired-up color while it remains the record.
 
 - Reorder Today cards in each Daily habits, Timed activities, and Activity log section with a long press and drag and drop; save order to the server across dates and devices.

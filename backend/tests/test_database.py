@@ -373,8 +373,34 @@ def test_month_and_unresolved_respect_archived_gaps(store):
     unresolved_dates = {item["date"] for item in store.unresolved()}
     assert {start.isoformat(), archived.isoformat(), restored.isoformat()}.issubset(unresolved_dates)
     assert (archived + timedelta(days=1)).isoformat() not in unresolved_dates
-    summary = {item["date"]: item for item in store.month_summary(today.strftime("%Y-%m"))}
+    summary = {item["date"]: item for item in store.month_summary(archived.strftime("%Y-%m"))}
     assert summary[archived.isoformat()] == {"date": archived.isoformat(), "done": 0, "missed": 0}
+
+
+def test_habit_adherence_days_include_pending_and_skip_archived_gaps(store):
+    today = store.today()
+    start = today - timedelta(days=4)
+    archived = today - timedelta(days=3)
+    restored = today - timedelta(days=1)
+    habit = store.create_habit("Read", start.isoformat())
+    with store.connect() as connection, connection:
+        connection.execute(
+            "INSERT INTO habit_archive_periods(habit_id, archived_at, resurrected_at) VALUES (?, ?, ?)",
+            (habit["id"], archived.isoformat(), restored.isoformat()),
+        )
+    store.set_status(habit["id"], start.isoformat(), "done")
+    store.set_status(habit["id"], archived.isoformat(), "missed")
+    store.set_status(habit["id"], (today - timedelta(days=1)).isoformat(), "done")
+    days = store.habit_adherence_days(habit["id"], start.isoformat(), today.isoformat())
+    assert days == [
+        {"date": start.isoformat(), "status": "done"},
+        {"date": archived.isoformat(), "status": "missed"},
+        {"date": restored.isoformat(), "status": "done"},
+        {"date": today.isoformat(), "status": "pending"},
+    ]
+    assert store.habit_adherence_days(habit["id"], start.strftime("%Y%m%d"), today.strftime("%Y%m%d")) == days
+    with pytest.raises(DomainError, match="on or after"):
+        store.habit_adherence_days(habit["id"], today.isoformat(), start.isoformat())
 
 
 def test_notes_and_statistics(store):
@@ -400,9 +426,10 @@ def test_activity_log_is_observational_with_date_notes_and_lifecycle(store):
     assert card["lastCompletedDate"] == yesterday
     assert card["completed"] is False
     assert card["hasNote"] is True
-    month = store.activity_log_month(item["id"], today.strftime("%Y-%m"))
-    assert next(day for day in month["days"] if day["date"] == yesterday)["completed"] is True
-    assert next(day for day in month["days"] if day["date"] == today.isoformat())["hasNote"] is True
+    yesterday_month = store.activity_log_month(item["id"], yesterday[:7])
+    today_month = store.activity_log_month(item["id"], today.strftime("%Y-%m"))
+    assert next(day for day in yesterday_month["days"] if day["date"] == yesterday)["completed"] is True
+    assert next(day for day in today_month["days"] if day["date"] == today.isoformat())["hasNote"] is True
     with pytest.raises(DomainError):
         store.set_activity_log_completion(item["id"], (today + timedelta(days=1)).isoformat(), True)
     store.archive_activity_log(item["id"])

@@ -45,6 +45,7 @@ export interface HabitDetail extends HabitSummary {
 }
 export interface HabitMonthDay { date: string; active: boolean; status: Status | null }
 export interface HabitMonth { id: number; name: string; startDate: string; month: string; days: HabitMonthDay[] }
+export interface HabitAdherenceDay { date: string; status: Status }
 export interface ArchivePeriod {
   id: number; number: number; startDate: string; endDate: string;
   currentStreak: number; longestStreak: Streak | null; streaks: Streak[]; notes: HabitNote[];
